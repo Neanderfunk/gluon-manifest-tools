@@ -51,12 +51,25 @@ Gluon baut dort ohnehin nur `-squashfs-combined`.
 
 ## Welche Knoten betroffen sind
 
-| Gluon auf dem Knoten | OpenWrt | Manifest-Zeilen, die er liest | betroffen |
-| --- | --- | --- | --- |
-| bis 2016.2.3 | bis 15.05 | 4 Felder, sha512 (letzte passende Zeile) | ja |
-| 2016.2.4 bis 2017.1.x | 15.05 / 17.01 | 4 Felder, sha256 | ja |
-| 2018.1 bis 2021.1.x | 17.01 bis 19.07 | 5 Felder | ja |
-| ab 2022.1 | ab 21.02 | 5 Felder | nein |
+| Gluon auf dem Knoten | OpenWrt | Boot-Partition | Manifest-Zeilen, die er liest | mit MBR-Image |
+| --- | --- | --- | --- | --- |
+| bis 2016.2.3 | 14.07 / 15.05 | 4 MB | 4 Felder, sha512 (letzte passende Zeile) | **Konfiguration geht trotzdem verloren** |
+| 2016.2.4 bis 2016.2.x | 15.05 | 4 MB | 4 Felder, sha256 | **Konfiguration geht trotzdem verloren** |
+| 2017.1.x | 17.01 | 16 MB | 4 Felder, sha256 | bleibt erhalten |
+| 2018.1 bis 2021.1.x | 17.01 bis 19.07 | 16 MB | 5 Felder | bleibt erhalten |
+| ab 2022.1 | ab 21.02 | 16 MB | 5 Felder | nicht nötig (EFI-Image geht) |
+
+**Grenze bis Gluon 2016.2 (Barrier Breaker, Chaos Calmer):** Deren
+Bootpartition ist 4 MB groß; OpenWrt hat sie erst zu 17.01 auf 16 MB gebracht
+(`12a6e3cd054`, 09.11.2016). Das alte sysupgrade liest nach dem `dd` die
+Partitionstabelle nicht neu ein, `/dev/sda1` hat für den Kernel also noch
+4 MB, das neue Dateisystem ist 16 MB groß: `EXT4-fs (sda1): bad geometry:
+block count 4096 exceeds size of device (1024 blocks)`, `mount ... Invalid
+argument`, die Konfiguration landet im RAM (im Labortest so gesehen). Ein
+Image mit 4-MB-Boot geht nicht, allein der 2025.1-Kernel hat 6 MB. Solche
+Knoten kommen ohne Konfiguration hoch: ohne Schlüssel-Image im Setup-Mode
+(aus dem Mesh, braucht jemanden vor Ort), mit Schlüssel-Image im
+Normalbetrieb mit Vorgaben (ohne Kontakt, Standort, Hostname).
 
 Modellnamen: `x86-generic`, `x86-64` und die alten Varianten `x86-kvm`,
 `x86-virtualbox`, `x86-vmware`, `x86-xen_domu`, `x86-64-virtualbox`,
@@ -200,14 +213,20 @@ Knoten bleibt danach auf x86-legacy, etwas langsamer, aber er startet.
 Ohne x86-legacy-Image melden die Werkzeuge das als Warnung. Neanderfunk baut
 x86-legacy seit FirmwareConfigs v2025.1.x `9706eab` (05.10.2026).
 
-## Offene Tests
+## Labortest (06.10.2026)
 
-Belegt sind der Konfigurationsverlust mit dem EFI-Image (echter Ablauf) und
-die Übernahme samt Migrationsassistent bei simulierter Übergabe. Noch offen,
-sobald ein Lauf mit `402e37a` vorliegt:
+QEMU, echter Gluon-2014.4-Knoten (Barrier Breaker, drei Karten), Image
+26100521bro (x86-64; x86-generic und x86-legacy waren nicht im Lauf, gleicher
+Aufbau):
 
-- echtes sysupgrade 2014.4 -> 2025.1-MBR-Image (QEMU)
-- danach sysupgrade MBR -> EFI-Image (Schritt 4 oben)
-- kleiner Datenträger: Das 2025.1-Image ist 126 MB groß (Boot 16 MB, Rootfs
-  104 MB), die alten Gluon-x86-Images rund 52 MB. Was auf einer 64-MB-CF-Karte
-  passiert, ist ungeprüft.
+- sysupgrade 2014.4 -> MBR-Image: Image geschrieben, bootet; Konfiguration
+  verloren (4-MB-Grenze oben, nachgewiesen).
+- danach sysupgrade MBR -> EFI-Image (wie beim nächsten Release): "Partition
+  layout has changed. Full image will be written", Konfiguration erhalten
+  (Hostname, Kontakt, VPN-Limit), `/boot` jetzt vfat, bootet im BIOS-Modus.
+- 64-MB-Platte: `dd` endet mit "No space left on device", Kernel kürzt die
+  Rootfs-Partition ("extends beyond EOD, truncated"), Knoten bootet mit
+  27,5 MB Overlay. Unkritisch.
+- Die Übernahme aus 2017.1 bis 2021.1 ist nicht am echten Altimage getestet
+  (keins im Archiv); Geometrie identisch (Start Sektor 512, 16 MB), die
+  Konfigurationsübernahme selbst ist mit simulierter Übergabe geprüft.

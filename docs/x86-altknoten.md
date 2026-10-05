@@ -53,8 +53,9 @@ Gluon baut dort ohnehin nur `-squashfs-combined`.
 
 | Gluon auf dem Knoten | OpenWrt | Boot-Partition | Manifest-Zeilen, die er liest | mit MBR-Image |
 | --- | --- | --- | --- | --- |
-| bis 2016.2.3 | 14.07 / 15.05 | 4 MB | 4 Felder, sha512 (letzte passende Zeile) | **Konfiguration geht trotzdem verloren** |
-| 2016.2.4 bis 2016.2.x | 15.05 | 4 MB | 4 Felder, sha256 | **Konfiguration geht trotzdem verloren** |
+| bis 2016.2.3 | 14.07 / 15.05 | 4 MB | 4 Felder, sha512 (letzte passende Zeile) | **verloren**, erst Zwischenschritt 2016.2.6+ |
+| 2016.2.4 bis 2016.2.5 | 15.05 | 4 MB | 4 Felder, sha256 | **verloren**, erst Zwischenschritt 2016.2.6+ |
+| 2016.2.6 bis 2016.2.7 | 15.05 | 4 MB | 4 Felder, sha256 | bleibt erhalten (gestuftes sysupgrade) |
 | 2017.1.x | 17.01 | 16 MB | 4 Felder, sha256 | bleibt erhalten |
 | 2018.1 bis 2021.1.x | 17.01 bis 19.07 | 16 MB | 5 Felder | bleibt erhalten |
 | ab 2022.1 | ab 21.02 | 16 MB | 5 Felder | nicht nötig (EFI-Image geht) |
@@ -65,8 +66,28 @@ Bootpartition ist 4 MB groß; OpenWrt hat sie erst zu 17.01 auf 16 MB gebracht
 Partitionstabelle nicht neu ein, `/dev/sda1` hat für den Kernel also noch
 4 MB, das neue Dateisystem ist 16 MB groß: `EXT4-fs (sda1): bad geometry:
 block count 4096 exceeds size of device (1024 blocks)`, `mount ... Invalid
-argument`, die Konfiguration landet im RAM (im Labortest so gesehen). Ein
-Image mit 4-MB-Boot geht nicht, allein der 2025.1-Kernel hat 6 MB. Solche
+argument`, die Konfiguration landet im RAM (im Labortest so gesehen). Gluon kennt das Problem seit 2017 (#1010) und hat es in **v2016.2.6** mit dem
+gestuften sysupgrade (`d4a69c00`, Backport aus LEDE) behoben: "a Gluon node
+running an older version must be upgraded to Gluon v2016.2.6 first before
+switching to a LEDE-based version" (Release Notes 2016.2.6 und 2017.1). Ein
+Image mit 4-MB-Boot geht nicht, allein der 2025.1-Kernel hat 6 MB.
+
+Sprünge mit Erhalt der Konfiguration (x86, 32 Bit auf x86-legacy, siehe
+"32 Bit"):
+
+| Herkunft | Weg |
+| --- | --- |
+| 2014.x | kein Autoupdater (Image-Name `nil`): von Hand Sicherung ziehen (`sysupgrade -b`), 2025.1 flashen, Sicherung als `/boot/sysupgrade.tgz` ablegen, `firstboot -y; reboot` (wird eingespielt wie nach sysupgrade) |
+| 2015.1 bis 2016.2.5 | -> Gluon 2016.2.6/2016.2.7 (gleiche 4-MB-Aufteilung) -> 2025.1-MBR -> später EFI |
+| 2016.2.6 bis 2016.2.7 | -> 2025.1-MBR -> später EFI |
+| 2017.1 bis 2021.1 | -> 2025.1-MBR -> später EFI |
+| ab 2022.1 | -> 2025.1-EFI |
+
+Die Zwischenstufe 2016.2.6+ ist ein eigener Bau von Gluon v2016.2.7 für
+x86-generic (Chaos-Calmer-Zeit, i486) mit der Site der Zielcommunity, im
+Manifest für die 4-Feld-Zeilen. Der Sprung 2016.2.6+ -> 2025.1-MBR ist nicht
+getestet, die Bedingungen sind aber dieselben wie beim Upstream-Sprung auf
+2017.1 (ext4, 16 MB, Start Sektor 512). Solche
 Knoten kommen ohne Konfiguration hoch: ohne Schlüssel-Image im Setup-Mode
 (aus dem Mesh, braucht jemanden vor Ort), mit Schlüssel-Image im
 Normalbetrieb mit Vorgaben (ohne Kontakt, Standort, Hostname).

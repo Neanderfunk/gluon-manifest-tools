@@ -127,6 +127,28 @@ Ein Alias-Name hilft nicht: Alte und neue x86-Knoten melden denselben
 Modellnamen. Unterscheiden lässt sich nur über das Zeilenformat oder darüber,
 welches Manifest der Knoten liest (eigene Mirror-URL, eigener Zweig).
 
+## Wie alt sind x86-Knoten im Feld noch? (Stand 06.10.2026)
+
+Ausgewertet: alle Karten, die der Gluon-Census
+([census-exporter](https://github.com/freifunk-gluon/census-exporter),
+`communities.json`) abfragt, 122 von 130 erreichbar, 37.941 Knoten. x86
+erkannt am Image-Namen oder am Modell (CPU- bzw. DMI-Name, keine
+Router-Hersteller), auch offline gemeldete Knoten gezählt.
+
+| Gluon auf x86 | Knoten | Bedeutung |
+| --- | --- | --- |
+| 2014.x, 2015.x | **0** | der Handweg bleibt Theorie |
+| 2016.1.x | 1 | vor 2016.2.6: Zwischenschritt nötig; CPU der Athlon-XP-Klasse ohne SSE2, also x86-legacy |
+| 2016.2.0 bis 2016.2.5 | 1 (2016.2.4, VM) | vor 2016.2.6: Zwischenschritt nötig |
+| 2016.2.6 bis 2016.2.7 | 2 | direkt aufs MBR-Image |
+| 2017.1.x | 10 | direkt aufs MBR-Image |
+| 2018.1 bis 2021.1 | 176 | MBR-Image über `-x alle` |
+| ab 2022.1 | 1.326 | EFI-Image geht |
+
+Die älteste x86-Firmware im Feld ist also Gluon **2016.1**; uralte x86-VMs
+(2014/2015) gibt es nach dem Census nicht mehr. Nicht erfasst: Communities
+ohne Census-Eintrag und die 8 Karten, die beim Abruf nicht antworteten.
+
 ## Schritte auf dem Firmware-Server
 
 Werkzeuge: dieses Repo, siehe README.

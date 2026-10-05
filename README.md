@@ -66,6 +66,9 @@ Eingriff durchgelaufen.
 | 2018.1 bis 2021.1 | 16 MB | -> 2025.1-MBR (`-x alle`, eigenes Verzeichnis) -> später EFI | 1 (+1) |
 | ab 2022.1 | 16 MB | -> 2025.1-EFI | 1 |
 
+Im Feld ist die älteste x86-Firmware nach dem Gluon-Census (06.10.2026)
+Gluon 2016.1 (1 Knoten); vor 2016.2.6 sind es 2, 2014.x/2015.x keiner.
+
 Was die Werkzeuge je Zeilenformat für x86 schreiben und was getestet ist:
 [docs/x86-altknoten.md](docs/x86-altknoten.md).
 

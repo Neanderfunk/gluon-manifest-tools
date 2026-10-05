@@ -1,22 +1,29 @@
 # HowTo: alte x86-Knoten auf Gluon 2025.1 bringen
 
-Stand 05.10.2026. Für Betreiber eines Firmware-Servers, die x86-Knoten mit
+Stand 06.10.2026. Für Betreiber eines Firmware-Servers, die x86-Knoten mit
 Gluon bis 2021.1 per Autoupdater auf 2025.1 holen wollen, ohne dass jemand
 vor Ort etwas einstellen muss (BIOS, Boot-Optionen, Config-Mode).
 
 ## Kurzfassung
 
+> **x86 vor Gluon 2016.2.6 scheitert auf jeden Fall.** Ein direkter Sprung
+> auf irgendeine Firmware ab LEDE 17.01 (Gluon 2017.1) verliert dort die
+> Konfiguration, egal welches Image (Gluon #1010). Weg nur über den
+> Zwischenschritt Gluon 2016.2.6+ oder von Hand, siehe Sprungmatrix.
+
 1. Release-Verzeichnis: Zu jedem x86-sysupgrade-Image liegt in `other/` ein
-   `...-<target>-mbr-sysupgrade.img.gz`. Neanderfunk baut es seit
-   gluon-patches-hardware `a50d4b3` (FirmwareConfigs v2025.1.x `402e37a`).
-2. Manifest so erzeugen, dass alte x86-Knoten dieses MBR-Image bekommen und
-   alle anderen das normale EFI-Image:
-   `manifeste-zusammenfuehren.sh` oder `manifest-altformat.sh`, beide mit
-   `-x alt` (Vorgabe) bzw. `-x alle`.
+   `...-<target>-mbr-sysupgrade.img.gz` (MBR, Bootpartition ext4).
+   Neanderfunk baut es seit gluon-patches-hardware `a50d4b3`.
+2. Manifest mit `manifeste-zusammenfuehren.sh` oder `manifest-altformat.sh`.
+   Für x86 (generic, legacy, 64) schreiben beide: keine sha512-4-Feld-Zeile
+   (die lesen nur Knoten bis 2016.2.3), die sha256-4-Feld-Zeile aufs
+   MBR-Image, die 5-Feld-Zeile wie die Basis (EFI). Mit `-x alle` auch die
+   5-Feld-Zeile aufs MBR-Image, nur für Verzeichnisse, die allein Altknoten
+   lesen.
 3. Prüfen, unterschreiben, freischalten wie immer.
 
 Danach läuft der Knoten mit 2025.1 und seiner alten Konfiguration. Beim
-nächsten Release wechselt er von selbst auf das EFI-Image.
+nächsten Release wechselt er von selbst auf das EFI-Image (getestet).
 
 ## Warum ein eigenes Image
 
@@ -51,65 +58,74 @@ Gluon baut dort ohnehin nur `-squashfs-combined`.
 
 ## Welche Knoten betroffen sind
 
-| Gluon auf dem Knoten | OpenWrt | Boot-Partition | Manifest-Zeilen, die er liest | mit MBR-Image |
-| --- | --- | --- | --- | --- |
-| bis 2016.2.3 | 14.07 / 15.05 | 4 MB | 4 Felder, sha512 (letzte passende Zeile) | **verloren**, erst Zwischenschritt 2016.2.6+ |
-| 2016.2.4 bis 2016.2.5 | 15.05 | 4 MB | 4 Felder, sha256 | **verloren**, erst Zwischenschritt 2016.2.6+ |
-| 2016.2.6 bis 2016.2.7 | 15.05 | 4 MB | 4 Felder, sha256 | bleibt erhalten (gestuftes sysupgrade) |
-| 2017.1.x | 17.01 | 16 MB | 4 Felder, sha256 | bleibt erhalten |
-| 2018.1 bis 2021.1.x | 17.01 bis 19.07 | 16 MB | 5 Felder | bleibt erhalten |
-| ab 2022.1 | ab 21.02 | 16 MB | 5 Felder | nicht nötig (EFI-Image geht) |
+| Gluon auf dem Knoten | OpenWrt | Boot | liest im Manifest | Werkzeuge liefern für x86 | Ergebnis |
+| --- | --- | --- | --- | --- | --- |
+| 2014.x | 14.07 | 4 MB | (Autoupdater kennt x86 nicht) | - | nur von Hand |
+| 2015.1 bis 2016.2.3 | 14.07 / 15.05 | 4 MB | 4 Felder, sha512 | nichts | Knoten bleibt stehen |
+| 2016.2.4 bis 2016.2.5 | 15.05 | 4 MB | 4 Felder, sha256 | MBR-Image | **Konfiguration verloren** |
+| 2016.2.6 bis 2016.2.7 | 15.05 | 4 MB | 4 Felder, sha256 | MBR-Image | bleibt erhalten (gestuftes sysupgrade) |
+| 2017.1.x | 17.01 | 16 MB | 4 Felder, sha256 | MBR-Image | bleibt erhalten |
+| 2018.1 bis 2021.1.x | 17.01 bis 19.07 | 16 MB | 5 Felder | EFI-Image (`-x alle`: MBR) | EFI: **verloren**; MBR: bleibt erhalten |
+| ab 2022.1 | ab 21.02 | 16 MB | 5 Felder | EFI-Image | bleibt erhalten |
 
-**Grenze bis Gluon 2016.2 (Barrier Breaker, Chaos Calmer):** Deren
-Bootpartition ist 4 MB groß; OpenWrt hat sie erst zu 17.01 auf 16 MB gebracht
-(`12a6e3cd054`, 09.11.2016). Das alte sysupgrade liest nach dem `dd` die
-Partitionstabelle nicht neu ein, `/dev/sda1` hat für den Kernel also noch
-4 MB, das neue Dateisystem ist 16 MB groß: `EXT4-fs (sda1): bad geometry:
-block count 4096 exceeds size of device (1024 blocks)`, `mount ... Invalid
-argument`, die Konfiguration landet im RAM (im Labortest so gesehen). Gluon kennt das Problem seit 2017 (#1010) und hat es in **v2016.2.6** mit dem
-gestuften sysupgrade (`d4a69c00`, Backport aus LEDE) behoben: "a Gluon node
-running an older version must be upgraded to Gluon v2016.2.6 first before
-switching to a LEDE-based version" (Release Notes 2016.2.6 und 2017.1). Ein
-Image mit 4-MB-Boot geht nicht, allein der 2025.1-Kernel hat 6 MB.
+2016.2.4/2016.2.5 und 2016.2.6+ lesen dieselben Zeilen und lassen sich im
+Manifest nicht trennen; die Werkzeuge entscheiden sich für den Weg, der
+2016.2.6+ und 2017.1 trägt. Knoten auf 2016.2.4/2016.2.5 vorher auf 2016.2.6+
+bringen. Ein x86-Knoten ohne Konfiguration kommt ohne Schlüssel-Image im
+Setup-Mode hoch (aus dem Mesh, braucht jemanden vor Ort), mit Schlüssel-Image
+im Normalbetrieb mit Vorgaben (ohne Kontakt, Standort, Hostname).
 
-Sprünge mit Erhalt der Konfiguration (x86, 32 Bit auf x86-legacy, siehe
-"32 Bit"):
+### Warum vor 2016.2.6 nichts geht
 
-| Herkunft | Weg |
-| --- | --- |
-| 2014.x | kein Autoupdater (Image-Name `nil`): von Hand Sicherung ziehen (`sysupgrade -b`), 2025.1 flashen, Sicherung als `/boot/sysupgrade.tgz` ablegen, `firstboot -y; reboot` (wird eingespielt wie nach sysupgrade) |
-| 2015.1 bis 2016.2.5 | -> Gluon 2016.2.6/2016.2.7 (gleiche 4-MB-Aufteilung) -> 2025.1-MBR -> später EFI |
-| 2016.2.6 bis 2016.2.7 | -> 2025.1-MBR -> später EFI |
-| 2017.1 bis 2021.1 | -> 2025.1-MBR -> später EFI |
-| ab 2022.1 | -> 2025.1-EFI |
+Die Bootpartition war bis Chaos Calmer 4 MB groß; OpenWrt hat sie zu 17.01
+auf 16 MB gebracht (`12a6e3cd054`, 09.11.2016). Das alte sysupgrade liest
+nach dem `dd` die Partitionstabelle nicht neu ein, `/dev/sda1` hat für den
+Kernel also noch 4 MB, das neue Dateisystem 16 MB: `EXT4-fs (sda1): bad
+geometry: block count 4096 exceeds size of device (1024 blocks)`,
+`mount ... Invalid argument`, die Konfiguration landet im RAM (im Labortest
+so gesehen). Gluon hat das in **v2016.2.6** mit dem gestuften sysupgrade
+behoben (`d4a69c00`, Backport aus LEDE; Release Notes 2016.2.6 und 2017.1:
+"a Gluon node running an older version must be upgraded to Gluon v2016.2.6
+first before switching to a LEDE-based version"). Ein Image mit 4-MB-Boot
+geht nicht, allein der 2025.1-Kernel hat 6 MB.
+
+## Sprungmatrix (x86, Konfiguration bleibt erhalten)
+
+32 Bit jeweils auf x86-legacy, siehe "32 Bit".
+
+| Herkunft | Weg | Sprünge |
+| --- | --- | --- |
+| 2014.x | kein Autoupdater (Image-Name `nil`): von Hand Sicherung ziehen (`sysupgrade -b`), 2025.1 flashen, Sicherung als `/boot/sysupgrade.tgz` auf Partition 1 legen, `firstboot -y; reboot` (wird eingespielt wie nach sysupgrade) | 1 von Hand |
+| 2015.1 bis 2016.2.5 | -> Gluon 2016.2.6/2016.2.7 (gleiche 4-MB-Aufteilung) -> 2025.1-MBR -> später EFI | 2 (+1 automatisch) |
+| 2016.2.6 bis 2016.2.7 | -> 2025.1-MBR -> später EFI | 1 (+1) |
+| 2017.1 | -> 2025.1-MBR -> später EFI | 1 (+1) |
+| 2018.1 bis 2021.1 | -> 2025.1-MBR (`-x alle`, eigenes Verzeichnis) -> später EFI | 1 (+1) |
+| ab 2022.1 | -> 2025.1-EFI | 1 |
 
 Die Zwischenstufe 2016.2.6+ ist ein eigener Bau von Gluon v2016.2.7 für
-x86-generic (Chaos-Calmer-Zeit, i486) mit der Site der Zielcommunity, im
-Manifest für die 4-Feld-Zeilen. Der Sprung 2016.2.6+ -> 2025.1-MBR ist nicht
-getestet, die Bedingungen sind aber dieselben wie beim Upstream-Sprung auf
-2017.1 (ext4, 16 MB, Start Sektor 512). Solche
-Knoten kommen ohne Konfiguration hoch: ohne Schlüssel-Image im Setup-Mode
-(aus dem Mesh, braucht jemanden vor Ort), mit Schlüssel-Image im
-Normalbetrieb mit Vorgaben (ohne Kontakt, Standort, Hostname).
+x86-generic (Chaos-Calmer-Zeit, i486) mit der Site der Zielcommunity; die
+Werkzeuge lenken die sha512-Zeilen nicht darauf, das Manifest dafür ist von
+Hand zu bauen. Getestet: 2014.4 -> MBR (Konfiguration verloren, Ursache
+nachgewiesen), MBR -> EFI (erhalten). Nicht getestet: 2016.2.6+ -> MBR und
+2017.1 bis 2021.1 -> MBR (Geometrie wie beim Upstream-Sprung auf 2017.1:
+ext4, 16 MB, Start Sektor 512).
 
 Modellnamen: `x86-generic`, `x86-64` und die alten Varianten `x86-kvm`,
 `x86-virtualbox`, `x86-vmware`, `x86-xen_domu`, `x86-64-virtualbox`,
-`x86-64-vmware` (stehen als Aliase in den Manifest-Werkzeugen). `x86-geode`
-ist nicht betroffen.
+`x86-64-vmware` (Aliase in den Werkzeugen). `x86-geode` gibt es erst ab
+2017.1 (16-MB-Boot) und ist nicht betroffen.
 
 Ohne Weg per Autoupdater:
 
 - Gluon 2014.x auf x86: `platform_info.get_image_name()` liefert dort `nil`,
   der Autoupdater bricht mit "doesn't support this hardware model" ab (im
-  2014.4-Rootfs des VDI nachgesehen). Kein Manifest hilft; nur von Hand mit
-  dem MBR-Image flashen. `x86-generic` als Modellname gibt es ab 2015.1.
+  2014.4-Rootfs nachgesehen). Nur von Hand, siehe Sprungmatrix.
 - `x86-xen` (Ziel x86-xen_domu, bis 2016.2): kein heutiges Image, Knoten
   meldet "No matching firmware found" und bleibt stehen. Von Hand umstellen.
 
 Ein Alias-Name hilft nicht: Alte und neue x86-Knoten melden denselben
-Modellnamen. Unterscheiden lässt sich nur über das Zeilenformat (4 Felder =
-bis 2017.1) oder darüber, welches Manifest der Knoten liest (eigene
-Mirror-URL, eigener Zweig).
+Modellnamen. Unterscheiden lässt sich nur über das Zeilenformat oder darüber,
+welches Manifest der Knoten liest (eigene Mirror-URL, eigener Zweig).
 
 ## Schritte auf dem Firmware-Server
 
@@ -129,27 +145,26 @@ Erwartet: `gluon-<site>-<release>-x86-generic-mbr-sysupgrade.img.gz` und
 
 ### 2a. Gemeinsames Verzeichnis (alte und heutige Knoten lesen dasselbe Manifest)
 
-Typischer Fall: unser stable, das heutige Knoten und eingesammelte Altknoten
-gemeinsam lesen. Vorgabe `-x alt`: nur die 4-Feld-Zeilen zeigen aufs
-MBR-Image, die 5-Feld-Zeilen bleiben beim EFI-Image.
+Typischer Fall: stable, das heutige Knoten und eingesammelte Altknoten
+gemeinsam lesen. Vorgabe: x86-5-Feld-Zeilen bleiben beim EFI-Image, die
+sha256-4-Feld-Zeile zeigt aufs MBR-Image, keine sha512-Zeile.
 
 ```sh
 manifeste-zusammenfuehren.sh -n -b <basis> -z <zusatz> -o <neu>
 ```
 
-Im Probelauf je Domain auf die x86-Zeilen achten:
+Im Probelauf je Domain:
 
 ```
-  x86: 2 Image(s) auf MBR umgelenkt (nur 4-Feld-Zeilen)
+  x86: 2 Image(s) auf MBR umgelenkt (nur sha256-4-Feld-Zeilen; keine sha512-Zeilen fuer x86)
 ```
 
-Fehlt ein MBR-Image, bricht das Skript ab und nennt die Datei. Mit `-x aus`
-lässt es sich bewusst übergehen (dann verlieren alte x86-Knoten ihre
-Konfiguration). Danach ohne `-n` laufen lassen.
+Fehlt ein MBR-Image, schreibt das Skript für x86 gar keine 4-Feld-Zeilen und
+warnt; alte x86-Knoten bleiben dann stehen. Danach ohne `-n` laufen lassen.
 
 Grenze: Knoten mit 2018.1 bis 2021.1 lesen dieselben 5-Feld-Zeilen wie
-heutige Knoten und bekommen hier das EFI-Image. Gibt es solche x86-Knoten
-(Karte: Firmware-Version und Modell), braucht es Fall 2b für sie.
+heutige Knoten und bekommen hier das EFI-Image (Konfiguration verloren). Gibt
+es solche x86-Knoten (Karte: Firmware-Version und Modell), braucht es Fall 2b.
 
 ### 2b. Eigenes Verzeichnis nur für Altknoten
 
@@ -229,10 +244,11 @@ das heutige x86-generic-Image nicht. x86-legacy (i486) läuft dagegen auf jeder
 32-Bit-CPU.
 
 Liegt ein `x86-legacy-mbr-sysupgrade.img.gz` in der Basis, lenken beide
-Werkzeuge die 4-Feld-Zeilen von `x86-generic` und seinen Aliasen darauf. Der
-Knoten bleibt danach auf x86-legacy, etwas langsamer, aber er startet.
-Ohne x86-legacy-Image melden die Werkzeuge das als Warnung. Neanderfunk baut
-x86-legacy seit FirmwareConfigs v2025.1.x `9706eab` (05.10.2026).
+Werkzeuge die sha256-4-Feld-Zeile von `x86-generic` und seinen Aliasen darauf
+(2016.2.6+ ist noch i486-Klasse). Der Knoten bleibt danach auf x86-legacy,
+etwas langsamer, aber er startet. Ohne x86-legacy-Image melden die Werkzeuge
+das als Warnung. Neanderfunk baut x86-legacy seit FirmwareConfigs v2025.1.x
+`9706eab`.
 
 ## Labortest (06.10.2026)
 

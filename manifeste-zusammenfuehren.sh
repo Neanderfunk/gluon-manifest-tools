@@ -61,26 +61,29 @@ DANACH
   contrib/sign.sh), auch mit Schluesseln, die nur noch alte Firmware kennt.
 
 X86-ALTKNOTEN
-  Gluon baut fuer x86 seit 2023.2 das EFI-Image (Bootpartition FAT). Gluon bis
-  2021.1 (OpenWrt bis 19.07) legt beim sysupgrade die Konfiguration per
-  "mount -t ext4" auf Partition 1 ab und verliert sie dort: der Knoten startet
-  im Setup-Mode (Gluon #2967). Liegt in <basis>/<domain>/other/ zum
-  x86-sysupgrade-Image ein "...-<target>-mbr-sysupgrade.img.gz" (MBR,
-  Bootpartition ext4; Neanderfunk baut es seit gluon-patches-hardware
-  a50d4b3), zeigen x86-Zeilen auf dieses Image, und es wird in sysupgrade/
-  verlinkt:
-    Vorgabe (-x alt): nur die 4-Feld-Zeilen; die lesen nur Knoten bis 2017.1.
-      Fuer x86-generic nimmt das Skript dort das x86-legacy-MBR-Image, wenn
-      die Basis eines hat: "generic" war bis Gluon 2016.2 i486-Klasse, seit
-      2017.1 braucht es SSE2.
-    -x alle: auch die 5-Feld-Zeilen. Nur fuer ein Verzeichnis, das allein
-      alte Knoten lesen (eigene Mirror-URL oder eigener Zweig), denn neuere
-      Knoten lesen dieselben Zeilen; ein UEFI-only-Rechner bootet kein MBR.
-    -x aus: nichts umlenken.
-  Fehlt das MBR-Image, meldet das Skript es fuer jede Domain mit x86 als
-  Fehler (ausser -x aus). Danach wechselt der Knoten mit dem naechsten
-  Release von selbst auf das EFI-Image (OpenWrt ab 21.02 erkennt FAT).
-  Ablauf: docs/x86-altknoten.md
+  x86 vor Gluon 2016.2.6 scheitert auf jeden Fall: Die Bootpartition wuchs
+  mit LEDE 17.01 von 4 auf 16 MB, und erst 2016.2.6 hat das gestufte
+  sysupgrade, das damit umgehen kann (Gluon #1010). Gluon bis 2021.1 verliert
+  ausserdem auf dem EFI-Image (ab Gluon 2023.2, Bootpartition FAT) die
+  Konfiguration (Gluon #2967). Deshalb fuer x86 (generic, legacy, 64;
+  x86-geode gibt es erst ab 2017.1 und bleibt normal):
+    - keine sha512-4-Feld-Zeile (die lesen nur Knoten bis 2016.2.3);
+    - die sha256-4-Feld-Zeile (2016.2.4 bis 2017.1) zeigt auf das MBR-Image
+      "...-<target>-mbr-sysupgrade.img.gz" aus <basis>/<domain>/other/
+      (MBR, Bootpartition ext4; Neanderfunk baut es seit
+      gluon-patches-hardware a50d4b3), fuer x86-generic auf das
+      x86-legacy-MBR-Image, wenn die Basis eines hat ("generic" war bis 2016.2
+      i486-Klasse). 2016.2.6+ und 2017.1 behalten die Konfiguration,
+      2016.2.4/2016.2.5 nicht (dafuer Zwischenschritt 2016.2.6+, siehe Doku).
+      Fehlt das MBR-Image, gibt es fuer x86 gar keine 4-Feld-Zeile (Warnung);
+      die Knoten bleiben dann auf ihrer Firmware.
+    -x alle: zusaetzlich die 5-Feld-Zeilen (ab 2018.1) aufs MBR-Image. Nur fuer
+      ein Verzeichnis, das allein alte Knoten lesen (eigene Mirror-URL oder
+      eigener Zweig): ein UEFI-only-Rechner bootet kein MBR. Fehlt das
+      MBR-Image, bricht das Skript ab.
+    -x aus: keine Umlenkung; x86 bekommt dann gar keine 4-Feld-Zeilen.
+  Mit dem naechsten Release wechselt ein MBR-Knoten von selbst aufs EFI-Image.
+  Sprungmatrix: docs/x86-altknoten.md
 
 GRENZEN
   - Ob die Basis-Firmware den Sprung von einem alten Stand aushaelt (Migration
@@ -693,8 +696,12 @@ while IFS= read -r dom; do
 		while IFS= read -r f; do
 			m="${f%-sysupgrade.img.gz}-mbr-sysupgrade.img.gz"
 			if [ ! -f "$B/other/$m" ]; then
-				echo "  x86: other/$m fehlt; x86-Knoten bis 2021.1 verlieren mit $f die Konfiguration (-x aus, wenn gewollt)" >&2
-				FEHLER=1; continue
+				if [ "$X86" = alle ]; then
+					echo "  x86: other/$m fehlt (-x alle verlangt das MBR-Image)" >&2; FEHLER=1
+				else
+					echo "  x86: other/$m fehlt; fuer x86 keine 4-Feld-Zeilen, Altknoten bleiben stehen" >&2
+				fi
+				continue
 			fi
 			m4="$m"
 			case "$f" in
@@ -708,7 +715,7 @@ while IFS= read -r dom; do
 				[ "$PROBE" = 1 ] || [ -e "$O/sysupgrade/$x" ] || verlinken "$B/other/$x" "$O/sysupgrade"
 			done
 		done < <(awk '$1 == "B" { print $6 }' "$TMP/zeilen" | sort -u | grep -E -- '-x86-(generic|legacy|64)-sysupgrade\.img\.gz$')
-		[ -s "$TMP/mbr" ] && echo "  x86: $(wc -l < "$TMP/mbr" | tr -d ' ') Image(s) auf MBR umgelenkt ($( [ "$X86" = alle ] && echo '4- und 5-Feld-Zeilen' || echo 'nur 4-Feld-Zeilen'))" >&2
+		[ -s "$TMP/mbr" ] && echo "  x86: $(wc -l < "$TMP/mbr" | tr -d ' ') Image(s) auf MBR umgelenkt ($( [ "$X86" = alle ] && echo 'sha256-4-Feld- und 5-Feld-Zeilen' || echo 'nur sha256-4-Feld-Zeilen'); keine sha512-Zeilen fuer x86)" >&2
 	fi
 
 	# Unterordner: Vereinigung
@@ -766,9 +773,9 @@ while IFS= read -r dom; do
 				if (alle && ($6 in m5)) print $2, $3, m5s[$6], m5g[$6], m5[$6]
 				else print $2, $3, $4, $5, $6
 				if (($2 in alt) && !($2 in aus)) {
-					if ($6 in m4) {
-						print $2, $3, m4s[$6], m4[$6]
-						print $2, $3, m4x[$6], m4[$6]
+					if ($6 ~ /-x86-(generic|legacy|64)-sysupgrade\.img\.gz$/) {
+						# x86: nur sha256 aufs MBR-Image, keine sha512-Zeile (X86-ALTKNOTEN)
+						if ($6 in m4) print $2, $3, m4s[$6], m4[$6]
 					} else if ($6 in s512) {
 						print $2, $3, $4, $6
 						print $2, $3, s512[$6], $6

@@ -43,21 +43,21 @@ WAS DAS SKRIPT TUT
   Schluesseln, die nur noch in der alten Firmware stehen.
 
 X86-ALTKNOTEN
-  Gluon baut fuer x86 seit 2023.2 das EFI-Image (Bootpartition FAT). Gluon bis
-  2021.1 legt beim sysupgrade die Konfiguration per "mount -t ext4" auf
-  Partition 1 ab und verliert sie dort (Gluon #2967). Liegt zum
-  x86-sysupgrade-Image ein "...-<target>-mbr-sysupgrade.img.gz" (MBR,
-  Bootpartition ext4) im Image-Verzeichnis, zeigen die x86-Zeilen darauf:
-    Vorgabe (-x alt): nur die 4-Feld-Zeilen (Knoten bis 2017.1); fuer
-      x86-generic das x86-legacy-MBR-Image, wenn vorhanden (bis 2016.2 war
-      "generic" i486-Klasse, seit 2017.1 braucht es SSE2).
-    -x alle: auch die 5-Feld-Zeile, nur fuer Manifeste, die allein alte
-      Knoten lesen (ein UEFI-only-Rechner bootet kein MBR).
-    -x aus: nichts umlenken.
-  Das MBR-Image baut Gluon in images/other/; hier muss es im
-  Image-Verzeichnis liegen (Symlink). Liegt es nur in ../other, bricht das
-  Skript mit dem passenden ln-Befehl ab; fehlt es ganz, ebenfalls (ausser -x
-  aus). Ablauf: docs/x86-altknoten.md
+  x86 vor Gluon 2016.2.6 scheitert auf jeden Fall (Bootpartition 4 -> 16 MB
+  ab LEDE 17.01, erst 2016.2.6 kann das, Gluon #1010); Gluon bis 2021.1
+  verliert auf dem EFI-Image (ab 2023.2) die Konfiguration (Gluon #2967).
+  Deshalb fuer x86 (generic, legacy, 64; nicht x86-geode):
+    - keine sha512-4-Feld-Zeile (nur Knoten bis 2016.2.3);
+    - die sha256-4-Feld-Zeile (2016.2.4 bis 2017.1) zeigt auf
+      "...-<target>-mbr-sysupgrade.img.gz" (MBR, Bootpartition ext4) im
+      Image-Verzeichnis, fuer x86-generic auf das x86-legacy-MBR-Image, wenn
+      vorhanden. Fehlt das MBR-Image, keine 4-Feld-Zeile fuer x86 (Warnung;
+      liegt es nur in ../other, nennt das Skript den ln-Befehl).
+    -x alle: zusaetzlich die 5-Feld-Zeile aufs MBR-Image, nur fuer Manifeste,
+      die allein alte Knoten lesen (ein UEFI-only-Rechner bootet kein MBR);
+      fehlt das MBR-Image, Abbruch.
+    -x aus: keine Umlenkung; x86 bekommt dann gar keine 4-Feld-Zeilen.
+  Sprungmatrix: docs/x86-altknoten.md
 
 GRENZEN
   Ein Knoten mit alter Firmware kann nicht beliebig springen. Gluon 2025.1
@@ -295,9 +295,10 @@ if [ "$X86" != aus ]; then
 			if [ -f "$DIR/../other/$m" ]; then
 				echo "x86: $m liegt nur in other/; verlinken: ln -s ../other/$m $DIR/" >&2
 			else
-				echo "x86: $m fehlt; x86-Knoten bis 2021.1 verlieren mit $f die Konfiguration (-x aus, wenn gewollt)" >&2
+				echo "x86: $m fehlt; fuer x86 keine 4-Feld-Zeilen, Altknoten bleiben stehen" >&2
 			fi
-			fehler=1; continue
+			[ "$X86" = alle ] && fehler=1
+			continue
 		fi
 		m4="$m"
 		case "$f" in
@@ -331,9 +332,9 @@ printf '%s\n' "${OHNE_4FELD[@]}" > "$TMP/ohne4"
 			if (alle && ($5 in m5)) print modell, $2, m5s[$5], m5g[$5], m5[$5]
 			else print modell, $2, $3, $4, $5
 			if (modell in ohne) return
-			if ($5 in m4) {
-				print modell, $2, m4s[$5], m4[$5]
-				print modell, $2, m4x[$5], m4[$5]
+			if ($5 ~ /-x86-(generic|legacy|64)-sysupgrade\.img\.gz$/) {
+				# x86: nur sha256 aufs MBR-Image, keine sha512-Zeile (X86-ALTKNOTEN)
+				if ($5 in m4) print modell, $2, m4s[$5], m4[$5]
 				return
 			}
 			print modell, $2, $3, $5

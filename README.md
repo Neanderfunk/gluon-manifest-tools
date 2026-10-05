@@ -17,6 +17,11 @@ Manifeste. Hilfe jeweils mit `--help`.
 Unterschreiben gehört nicht dazu: dafür hat jede Community `ecdsasign` bzw.
 Gluons `contrib/sign.sh`. Die neuen Manifeste tragen keine Unterschrift.
 
+> **x86 vor Gluon 2016.2.6 scheitert auf jeden Fall:** Beim Sprung auf eine
+> Firmware ab LEDE 17.01 (Gluon 2017.1) geht die Konfiguration verloren, egal
+> welches Image (Bootpartition 4 -> 16 MB, Gluon #1010). Weg nur über den
+> Zwischenschritt Gluon 2016.2.6+ oder von Hand, siehe Sprungmatrix unten.
+
 ## Welche Firmware welche Zeilen liest
 
 | Gluon auf dem Knoten | liest |
@@ -33,11 +38,15 @@ Quellen und Grenzen: [docs/manifest-format.md](docs/manifest-format.md).
 - TP-Link CPE210/220/510/520 v1 auf Gluon 2016.2: deren sysupgrade lehnt das
   ath79-Image ab, nachdem das Netz schon gestoppt ist (Knoten offline bis
   Stromreset). Die Skripte schreiben für sie keine 4-Feld-Zeilen.
+- x86 bis Gluon 2016.2.5: siehe oben; die Werkzeuge schreiben für x86 keine
+  sha512-Zeilen (die lesen nur Knoten bis 2016.2.3), diese Knoten bleiben
+  stehen.
 - x86 mit Gluon bis 2021.1 auf ein EFI-Image (Gluon ab 2023.2): Konfiguration
-  geht verloren. Weg über ein zusätzliches MBR-Image, siehe
+  geht verloren. Weg über ein zusätzliches MBR-Image (sha256-Zeilen
+  automatisch, 5-Feld-Zeilen mit `-x alle`), siehe
   [docs/x86-altknoten.md](docs/x86-altknoten.md).
 - x86 mit Gluon 2014.x: der Autoupdater kennt dort keinen Image-Namen, nur
-  von Hand flashen.
+  von Hand.
 - `x86-xen` (bis 2016.2): kein heutiges Image.
 - Netgear WNDR3700 v4: der Wechsel ar71xx -> ath79 wurde nie gegangen
   (Kernelpartition gewachsen), bewusst kein Alias.
@@ -45,6 +54,20 @@ Quellen und Grenzen: [docs/manifest-format.md](docs/manifest-format.md).
 Ubiquiti NanoStation (loco) M XW sind per Alias enthalten: der Sprung von
 Gluon 2021.1 (ar71xx) auf ein ath79-Image ist an einem Gerät im Feld ohne
 Eingriff durchgelaufen.
+
+## Sprungmatrix x86 (Konfiguration bleibt erhalten)
+
+| Herkunft | Boot alt | Weg | Sprünge |
+| --- | --- | --- | --- |
+| 2014.x | 4 MB | von Hand: `sysupgrade -b`, neue Firmware flashen, Sicherung als `/boot/sysupgrade.tgz`, `firstboot -y; reboot` | 1 von Hand |
+| 2015.1 bis 2016.2.5 | 4 MB | -> Gluon 2016.2.6/2016.2.7 -> 2025.1-MBR -> später EFI | 2 (+1 automatisch) |
+| 2016.2.6 bis 2016.2.7 | 4 MB | -> 2025.1-MBR -> später EFI | 1 (+1) |
+| 2017.1 | 16 MB | -> 2025.1-MBR -> später EFI | 1 (+1) |
+| 2018.1 bis 2021.1 | 16 MB | -> 2025.1-MBR (`-x alle`, eigenes Verzeichnis) -> später EFI | 1 (+1) |
+| ab 2022.1 | 16 MB | -> 2025.1-EFI | 1 |
+
+Was die Werkzeuge je Zeilenformat für x86 schreiben und was getestet ist:
+[docs/x86-altknoten.md](docs/x86-altknoten.md).
 
 ## Beispiel
 

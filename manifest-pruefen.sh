@@ -20,7 +20,8 @@ AUFRUF
 
   <basisverzeichnis>  Server-Pfad des Zweigs, z. B. /var/www/firmware/stable
   [domain ...]        nur diese Domains (Vorgabe: alle Unterverzeichnisse
-                      ohne ".key")
+                      ohne ".key"; liegt sysupgrade/ direkt im
+                      Basisverzeichnis, ist das die eine Domain)
 
 OPTIONEN
   -b zweig     Name des Manifests (Vorgabe: letzter Teil des Basisverzeichnisses)
@@ -104,6 +105,9 @@ if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum 
 
 if [ $# -gt 0 ]; then
 	DOMAINS="$*"
+elif [ -d "$BASE/sysupgrade" ]; then
+	# flache Ablage (eine Domain): <basis>/sysupgrade/<zweig>.manifest
+	DOMAINS="."
 else
 	DOMAINS="$(cd "$BASE" && for d in */; do d="${d%/}"; [ -d "$d/sysupgrade" ] || continue
 		case "$d" in *.key) [ "$MIT_KEY" = 1 ] || continue ;; esac; echo "$d"; done)"

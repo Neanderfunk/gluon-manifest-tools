@@ -6,7 +6,8 @@
 # dem Zusatz (z. B. der letzten Version fuer Geraete, die die Basis nicht mehr
 # unterstuetzt) die Modelle, die in der Basis fehlen. Nur Symlinks, die
 # Quellen bleiben unangetastet. Fuer jede Gluon-Community nutzbar: erwartet
-# wird nur die uebliche Ablage <wurzel>/<domain>/{sysupgrade,factory,other}.
+# wird die uebliche Ablage <wurzel>/<domain>/{sysupgrade,factory,other} oder,
+# bei nur einer Domain, flach <wurzel>/{sysupgrade,factory,other}.
 # Hilfe: manifeste-zusammenfuehren.sh --help
 
 set -o nounset -o pipefail
@@ -18,7 +19,9 @@ per Symlinks, mit neu erzeugten (unsignierten) Manifesten.
 
 WAS DAS SKRIPT TUT
   Fuer jeden Domain-Ordner (auch die .key-Varianten), den Basis oder Zusatz
-  hat, legt es im Ausgabeverzeichnis an:
+  hat, legt es im Ausgabeverzeichnis an (flache Ablage ohne Domain-Ordner,
+  also <wurzel>/sysupgrade: dasselbe direkt in der Wurzel; Basis und Zusatz
+  muessen dann beide flach sein):
     sysupgrade/  Symlinks auf alle Images der Basis, dazu die Images des
                  Zusatzes fuer Modelle, die im Basis-Manifest NICHT stehen
                  (Vergleich ueber den Modellnamen, also auch ueber die
@@ -578,9 +581,16 @@ modell_zu_datei() {
 		}' "$3"
 }
 
-# Domain-Ordner: Vereinigung aus Basis und Zusatz
-{ ( cd "$BASIS" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' )
-  ( cd "$ZUSATZ" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' ); } | sort -u > "$TMP/domains"
+# Domain-Ordner: Vereinigung aus Basis und Zusatz. Flache Ablage (eine
+# Domain, <wurzel>/sysupgrade/...) zaehlt als eine Domain ".".
+if [ -d "$BASIS/sysupgrade" ] || [ -d "$ZUSATZ/sysupgrade" ]; then
+	[ -d "$BASIS/sysupgrade" ] && [ -d "$ZUSATZ/sysupgrade" ] \
+		|| falsch "Basis und Zusatz muessen gleich abgelegt sein: beide flach (<wurzel>/sysupgrade) oder beide mit Domain-Ordnern."
+	echo . > "$TMP/domains"
+else
+	{ ( cd "$BASIS" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' )
+	  ( cd "$ZUSATZ" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' ); } | sort -u > "$TMP/domains"
+fi
 
 # Dateien direkt in der Basis-Wurzel (README u. a.) mitnehmen
 while IFS= read -r f; do
@@ -709,7 +719,7 @@ while IFS= read -r dom; do
 			sysupgrade|factory|other)
 				# Basis komplett (ohne Manifeste und Editor-Reste)
 				if [ -d "$B/$t" ]; then
-					while IFS= read -r f; do verlinken "$B/$t/$f" "$O/$t"
+					while IFS= read -r f; do [ -e "$O/$t/$f" ] || [ -L "$O/$t/$f" ] || verlinken "$B/$t/$f" "$O/$t"
 					done < <(cd "$B/$t" && find . -mindepth 1 -maxdepth 1 ! -type d -printf '%f\n' \
 						| grep -v -e '\.manifest$' -e '\.manifest\.' -e '~$' | sort)
 				fi

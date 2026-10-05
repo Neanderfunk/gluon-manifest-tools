@@ -4,7 +4,8 @@ Werkzeuge für den Firmware-Server einer Gluon-Community: Manifeste so
 erzeugen und prüfen, dass auch Knoten mit sehr alter Firmware (Gluon 2014.x
 bis 2021.1) ihr Update finden. Die Skripte brauchen nur bash, awk, GNU
 coreutils und sha256sum/sha512sum; sie lesen die übliche Ablage
-`<wurzel>/<domain>/{sysupgrade,factory,other}` und schreiben unsignierte
+`<wurzel>/<domain>/{sysupgrade,factory,other}` oder, bei nur einer Domain,
+flach `<wurzel>/{sysupgrade,factory,other}`, und schreiben unsignierte
 Manifeste. Hilfe jeweils mit `--help`.
 
 | Skript | Zweck |

@@ -142,7 +142,7 @@ Router-Hersteller), auch offline gemeldete Knoten gezählt.
 | 2016.2.0 bis 2016.2.5 | 1 (2016.2.4, VM) | vor 2016.2.6: Zwischenschritt nötig |
 | 2016.2.6 bis 2016.2.7 | 2 | direkt aufs MBR-Image |
 | 2017.1.x | 10 | direkt aufs MBR-Image |
-| 2018.1 bis 2021.1 | 176 | MBR-Image über `-x alle` |
+| 2018.1 bis 2021.1 | 177 | MBR-Image über `-x alle` |
 | ab 2022.1 | 1.326 | EFI-Image geht |
 
 Die älteste x86-Firmware im Feld ist also Gluon **2016.1**; uralte x86-VMs

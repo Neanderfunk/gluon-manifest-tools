@@ -286,9 +286,15 @@ Aufbau):
 - 64-MB-Platte: `dd` endet mit "No space left on device", Kernel kürzt die
   Rootfs-Partition ("extends beyond EOD, truncated"), Knoten bootet mit
   27,5 MB Overlay. Unkritisch.
-- Die Übernahme aus 2017.1 bis 2021.1 ist nicht am echten Altimage getestet
-  (keins im Archiv); Geometrie identisch (Start Sektor 512, 16 MB), die
-  Konfigurationsübernahme selbst ist mit simulierter Übergabe geprüft.
+- Echte Gluon-2021.1-Images (x86-64, x86-generic), drei Karten, eingerichteter
+  Knoten: sysupgrade auf das 2025.1-MBR-Image (x86-64 bzw. für x86-generic
+  das x86-legacy-MBR-Image) behält Hostname, Kontakt, Koordinaten, VPN mit
+  Limit, alle drei Kartenrollen und die node_id. Gegenprobe auf das
+  EFI-Image: Konfiguration weg. 2017.1 bis 2020.2 nicht eigens getestet
+  (gleiche Geometrie: Start Sektor 512, 16 MB).
+- 2014.4 -> 2021.1 per echtem sysupgrade: Konfiguration weg (4-MB-Grenze);
+  von Hand (Sicherung als `sysupgrade.tgz` in Partition 1) vollständig
+  übernommen, danach weiter auf 2025.1-MBR ohne Verlust.
 - 32-Bit-MBR-Images aus 26100600bro, QEMU i386 im BIOS-Modus: beide mit
   Partitionstabelle wie x86-64 (ext4-Boot ab Sektor 512, 16 MB).
   x86-legacy bootet auf `-cpu pentium` (ohne SSE2) bis in den Betrieb (Setup,

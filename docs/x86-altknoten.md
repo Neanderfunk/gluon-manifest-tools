@@ -289,3 +289,9 @@ Aufbau):
 - Die Übernahme aus 2017.1 bis 2021.1 ist nicht am echten Altimage getestet
   (keins im Archiv); Geometrie identisch (Start Sektor 512, 16 MB), die
   Konfigurationsübernahme selbst ist mit simulierter Übergabe geprüft.
+- 32-Bit-MBR-Images aus 26100600bro, QEMU i386 im BIOS-Modus: beide mit
+  Partitionstabelle wie x86-64 (ext4-Boot ab Sektor 512, 16 MB).
+  x86-legacy bootet auf `-cpu pentium` (ohne SSE2) bis in den Betrieb (Setup,
+  Neustart, batman an eth0). x86-generic bootet auf `-cpu n270` (Atom, SSE2);
+  auf `-cpu pentium3` stirbt procd sofort ("invalid opcode" in libubox, Kernel
+  panic). Das bestätigt die Umlenkung von x86-generic auf x86-legacy oben.

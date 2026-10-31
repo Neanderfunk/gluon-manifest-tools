@@ -115,6 +115,8 @@ AUFRUF
   -a datei   zusaetzliche Zuordnungen alter -> neuer Modellnamen, "alt neu"
              je Zeile, "#" als Kommentar. Die bekannten stehen schon im
              Skript (Array ALIAS_ALT), die Datei kommt nur dazu.
+  -A         keine Alias-Zeilen ergaenzen. Fuer den zweiten von zwei Laeufen
+             hintereinander, siehe MEHRERE ZUSAETZE.
   -n         Probelauf: nur zaehlen und pruefen, nichts anlegen
   -h, --help diese Hilfe
 
@@ -125,6 +127,15 @@ BEISPIEL
       -g ~/gluon-v2021.1.x \
       -o /var/www/firmware/stable-v2023.2+eol
   (dann ohne -n; den Symlink "stable" erst nach dem Unterschreiben umstellen)
+
+MEHRERE ZUSAETZE
+  Zwei Laeufe hintereinander, die Ausgabe des ersten ist die Basis des zweiten:
+    manifeste-zusammenfuehren.sh -b stable-basis -z eol -o stable-1
+    manifeste-zusammenfuehren.sh -A -b stable-1 -z zwischen -o stable-2
+  Die Rangfolge ist die Reihenfolge der Laeufe. -A im zweiten Lauf, sonst
+  werden die Alias-Zeilen des ersten ihrerseits als Ziel eines Alias gelesen
+  (x86-xen -> x86-xen_domu -> x86-generic). Beide Ausgaben muessen liegen
+  bleiben, die Symlinks der zweiten zeigen in die erste.
 
 VORAUSSETZUNGEN
   bash, awk, GNU realpath (coreutils), sha256sum/sha512sum
@@ -513,8 +524,8 @@ for arg in "$@"; do
 done
 
 BASIS=""; ZUSATZ=""; AUS=""; BRANCH="stable"; MB=""; MZ=""; GLUON=""; PROBE=0
-ALIASE=""; X86="alt"
-while getopts "b:z:o:B:m:M:a:g:x:n" opt; do
+ALIASE=""; X86="alt"; KEIN_ALIAS=0
+while getopts "b:z:o:B:m:M:a:Ag:x:n" opt; do
 	case "$opt" in
 		b) BASIS="$OPTARG" ;;
 		z) ZUSATZ="$OPTARG" ;;
@@ -523,6 +534,7 @@ while getopts "b:z:o:B:m:M:a:g:x:n" opt; do
 		m) MB="$OPTARG" ;;
 		M) MZ="$OPTARG" ;;
 		a) ALIASE="$OPTARG" ;;
+		A) KEIN_ALIAS=1 ;;
 		g) GLUON="$OPTARG" ;;
 		x) X86="$OPTARG" ;;
 		n) PROBE=1 ;;
@@ -550,6 +562,7 @@ printf '%s\n' "${OHNE_4FELD[@]}" | sort -u > "$TMP/ohne4"
 : > "$TMP/alias"
 { printf '%s\n' "${ALIAS_ALT[@]}"; [ -n "$ALIASE" ] && cat "$ALIASE"; } \
 	| sed 's/#.*//' | awk 'NF >= 2 { print $1, $2 }' > "$TMP/alias"
+[ "$KEIN_ALIAS" = 0 ] || : > "$TMP/alias"
 : > "$TMP/unbedient"; : > "$TMP/bedient"
 FEHLER=0
 SUMME_B=0; SUMME_Z=0; SUMME_DOM=0

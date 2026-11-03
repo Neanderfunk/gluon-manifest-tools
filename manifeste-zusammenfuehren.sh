@@ -21,7 +21,8 @@ WAS DAS SKRIPT TUT
   Fuer jeden Domain-Ordner (auch die .key-Varianten), den Basis oder Zusatz
   hat, legt es im Ausgabeverzeichnis an (flache Ablage ohne Domain-Ordner,
   also <wurzel>/sysupgrade: dasselbe direkt in der Wurzel; Basis und Zusatz
-  muessen dann beide flach sein):
+  muessen dann beide flach sein). "<domain>-key" im Zusatz gilt als
+  "<domain>.key" der Basis und umgekehrt; der Name der Basis bleibt:
     sysupgrade/  Symlinks auf alle Images der Basis, dazu die Images des
                  Zusatzes fuer Modelle, die im Basis-Manifest NICHT stehen
                  (Vergleich ueber den Modellnamen, also auch ueber die
@@ -604,8 +605,18 @@ if [ -d "$BASIS/sysupgrade" ] || [ -d "$ZUSATZ/sysupgrade" ]; then
 		|| falsch "Basis und Zusatz muessen gleich abgelegt sein: beide flach (<wurzel>/sysupgrade) oder beide mit Domain-Ordnern."
 	echo . > "$TMP/domains"
 else
+	# Key-Ordner heissen je nach Bau "<domain>.key" (2025.1) oder
+	# "<domain>-key" (Sackgasse 2021.1). Ein Zusatz-Ordner zaehlt unter dem
+	# Namen, den die Basis fuer ihn hat, sonst bekaemen die Key-Domains der
+	# Basis keine Zusatz-Zeilen und daneben entstuende ein zweiter Ordner.
 	{ ( cd "$BASIS" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' )
-	  ( cd "$ZUSATZ" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' ); } | sort -u > "$TMP/domains"
+	  ( cd "$ZUSATZ" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' ) | while IFS= read -r d; do
+		case "$d" in
+			*-key) [ -d "$BASIS/${d%-key}.key" ] && d="${d%-key}.key" ;;
+			*.key) [ -d "$BASIS/${d%.key}-key" ] && d="${d%.key}-key" ;;
+		esac
+		printf '%s\n' "$d"
+	  done; } | sort -u > "$TMP/domains"
 fi
 
 # Dateien direkt in der Basis-Wurzel (README u. a.) mitnehmen
@@ -615,6 +626,12 @@ done < <(cd "$BASIS" && find . -mindepth 1 -maxdepth 1 ! -type d -printf '%f\n' 
 
 while IFS= read -r dom; do
 	B="$BASIS/$dom"; Z="$ZUSATZ/$dom"; O="$AUS/$dom"
+	if [ ! -d "$Z" ]; then
+		case "$dom" in
+			*.key) [ -d "$ZUSATZ/${dom%.key}-key" ] && Z="$ZUSATZ/${dom%.key}-key" ;;
+			*-key) [ -d "$ZUSATZ/${dom%-key}.key" ] && Z="$ZUSATZ/${dom%-key}.key" ;;
+		esac
+	fi
 	SUMME_DOM=$((SUMME_DOM + 1))
 	MBF="$B/sysupgrade/$MB"
 	if [ -n "$MZ" ]; then

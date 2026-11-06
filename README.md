@@ -10,7 +10,7 @@ Manifeste. Hilfe jeweils mit `--help`.
 
 | Skript | Zweck |
 | --- | --- |
-| `manifeste-zusammenfuehren.sh` | Neues Firmware-Verzeichnis (z. B. stable) aus einer Basis (aktuelle Gluon-Version) und einem Zusatz (letzte Version für Geräte, die die Basis nicht mehr baut), nur per Symlinks. Neues Manifest mit allen Zeilenformaten, die alte Knoten lesen, alten Modellnamen (eingebaute Aliasliste) und x86-Umlenkung auf ein MBR-Image (`-x`). `-g` prüft die Abdeckung gegen einen Gluon-Quellbaum. |
+| `manifeste-zusammenfuehren.sh` | Neues Firmware-Verzeichnis (z. B. stable) aus einer Basis (aktuelle Gluon-Version) und einem oder mehreren Zusätzen (`-z` mehrfach, in fester Rangfolge; z. B. ein Zwischenimage und die letzte Version für Geräte, die die Basis nicht mehr baut), nur per Symlinks. Neues Manifest mit allen Zeilenformaten, die alte Knoten lesen, alten Modellnamen (eingebaute Aliasliste) und x86-Umlenkung auf ein MBR-Image (`-x`). `-g` prüft die Abdeckung gegen einen Gluon-Quellbaum. |
 | `manifest-altformat.sh` | Ein vorhandenes Manifest um die alten Zeilenformate und alten Modellnamen ergänzen. |
 | `manifest-pruefen.sh` | Manifeste gegen die Images daneben prüfen (Datei da, sha256, Größe), vor und nach dem Unterschreiben. |
 

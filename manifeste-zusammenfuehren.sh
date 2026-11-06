@@ -15,7 +15,8 @@ set -o nounset -o pipefail
 hilfe() {
 	cat <<'EOT'
 manifeste-zusammenfuehren.sh - neues Firmware-Verzeichnis aus Basis + Zusatz
-per Symlinks, mit neu erzeugten (unsignierten) Manifesten.
+(oder mehreren Zusaetzen) per Symlinks, mit neu erzeugten (unsignierten)
+Manifesten.
 
 WAS DAS SKRIPT TUT
   Fuer jeden Domain-Ordner (auch die .key-Varianten), den Basis oder Zusatz
@@ -98,15 +99,17 @@ GRENZEN
     Das Manifest wirkt fuer sie nur, wenn <branch> ihr Zweig ist.
 
 AUFRUF
-  manifeste-zusammenfuehren.sh [optionen] -b <basis> -z <zusatz> -o <ausgabe>
+  manifeste-zusammenfuehren.sh [optionen] -b <basis> -z <zusatz> [-z <zusatz> ...] -o <ausgabe>
 
   -b dir     Basis, z. B. /var/www/firmware/stable-v2023.2
-  -z dir     Zusatz, z. B. /var/www/firmware/eol-v2021.1
+  -z dir     Zusatz, z. B. /var/www/firmware/eol-v2021.1. Mehrfach erlaubt,
+             siehe MEHRERE ZUSAETZE.
   -o dir     Ausgabe, darf noch nicht existieren
   -B name    Zweig des neuen Manifests (Vorgabe: stable)
   -m datei   Manifest-Name in der Basis (Vorgabe: <branch>.manifest)
-  -M datei   Manifest-Name im Zusatz (Vorgabe: das einzige *.manifest im
-             sysupgrade-Ordner der Domain, sonst <branch>.manifest)
+  -M datei   Manifest-Name in den Zusaetzen, fuer alle gleich (Vorgabe: je
+             Zusatz das einzige *.manifest im sysupgrade-Ordner der Domain,
+             sonst <branch>.manifest)
   -g dir     Abdeckung pruefen gegen einen Gluon-Quellbaum (Version des
              Zusatzes, z. B. ein Checkout von v2021.1.x): Am Ende stehen die
              Geraete aus dessen targets/, die im Ergebnis kein Image haben,
@@ -116,8 +119,9 @@ AUFRUF
   -a datei   zusaetzliche Zuordnungen alter -> neuer Modellnamen, "alt neu"
              je Zeile, "#" als Kommentar. Die bekannten stehen schon im
              Skript (Array ALIAS_ALT), die Datei kommt nur dazu.
-  -A         keine Alias-Zeilen ergaenzen. Fuer den zweiten von zwei Laeufen
-             hintereinander, siehe MEHRERE ZUSAETZE.
+  -A         keine Alias-Zeilen ergaenzen. Nur noch noetig, wenn die Basis
+             selbst schon eine Ausgabe dieses Skripts ist, siehe MEHRERE
+             ZUSAETZE.
   -n         Probelauf: nur zaehlen und pruefen, nichts anlegen
   -h, --help diese Hilfe
 
@@ -130,13 +134,18 @@ BEISPIEL
   (dann ohne -n; den Symlink "stable" erst nach dem Unterschreiben umstellen)
 
 MEHRERE ZUSAETZE
-  Zwei Laeufe hintereinander, die Ausgabe des ersten ist die Basis des zweiten:
-    manifeste-zusammenfuehren.sh -b stable-basis -z eol -o stable-1
-    manifeste-zusammenfuehren.sh -A -b stable-1 -z zwischen -o stable-2
-  Die Rangfolge ist die Reihenfolge der Laeufe. -A im zweiten Lauf, sonst
-  werden die Alias-Zeilen des ersten ihrerseits als Ziel eines Alias gelesen
-  (x86-xen -> x86-xen_domu -> x86-generic). Beide Ausgaben muessen liegen
-  bleiben, die Symlinks der zweiten zeigen in die erste.
+  -z mehrfach, in einem Aufruf:
+    manifeste-zusammenfuehren.sh -b stable-basis -z zwischen -z eol -o stable-neu
+  Rangfolge: Basis, dann die Zusaetze in der Reihenfolge der -z. Ein Modell
+  kommt aus dem ersten Zusatz, der es fuehrt und das weder die Basis noch ein
+  frueherer Zusatz schon deckt (auch nicht ueber einen Alias). Die
+  Alias-Zeilen entstehen einmal am Ende ueber alle Zeilen, ohne Ketten. Die
+  Symlinks zeigen direkt in die Quellen, ein Zwischenverzeichnis gibt es nicht.
+  Frueher (bis gluon-manifest-tools a60ea0d) ging das nur in zwei Laeufen,
+  die Ausgabe des ersten als Basis des zweiten, dort mit -A, sonst werden die
+  Alias-Zeilen des ersten ihrerseits als Ziel eines Alias gelesen
+  (x86-xen -> x86-xen_domu -> x86-generic). So gebaute Baeume brauchen ihr
+  Zwischenverzeichnis weiter, die Symlinks zeigen hinein.
 
 VORAUSSETZUNGEN
   bash, awk, GNU realpath (coreutils), sha256sum/sha512sum
@@ -524,12 +533,12 @@ for arg in "$@"; do
 	case "$arg" in --help|-h) hilfe; exit 0 ;; esac
 done
 
-BASIS=""; ZUSATZ=""; AUS=""; BRANCH="stable"; MB=""; MZ=""; GLUON=""; PROBE=0
+BASIS=""; ZUSAETZE=(); AUS=""; BRANCH="stable"; MB=""; MZ=""; GLUON=""; PROBE=0
 ALIASE=""; X86="alt"; KEIN_ALIAS=0
 while getopts "b:z:o:B:m:M:a:Ag:x:n" opt; do
 	case "$opt" in
 		b) BASIS="$OPTARG" ;;
-		z) ZUSATZ="$OPTARG" ;;
+		z) ZUSAETZE+=("$OPTARG") ;;
 		o) AUS="$OPTARG" ;;
 		B) BRANCH="$OPTARG" ;;
 		m) MB="$OPTARG" ;;
@@ -544,16 +553,18 @@ while getopts "b:z:o:B:m:M:a:Ag:x:n" opt; do
 done
 shift $((OPTIND - 1))
 [ $# -eq 0 ] || falsch "Unerwartete Argumente: $*"
-[ -n "$BASIS" ] && [ -n "$ZUSATZ" ] && [ -n "$AUS" ] || falsch "-b, -z und -o sind Pflicht."
+[ -n "$BASIS" ] && [ "${#ZUSAETZE[@]}" -gt 0 ] && [ -n "$AUS" ] || falsch "-b, -z und -o sind Pflicht."
 [ -d "$BASIS" ] || falsch "$BASIS ist kein Verzeichnis."
-[ -d "$ZUSATZ" ] || falsch "$ZUSATZ ist kein Verzeichnis."
+for z in "${ZUSAETZE[@]}"; do [ -d "$z" ] || falsch "$z ist kein Verzeichnis."; done
 [ -e "$AUS" ] && falsch "$AUS existiert schon; bitte einen neuen Namen nehmen."
 [ -n "$MB" ] || MB="$BRANCH.manifest"
 case "$X86" in alt|alle|aus) ;; *) falsch "-x kennt nur alt, alle oder aus." ;; esac
 [ -z "$ALIASE" ] || [ -r "$ALIASE" ] || falsch "$ALIASE nicht lesbar."
 [ -z "$GLUON" ] || [ -d "$GLUON/targets" ] || falsch "$GLUON hat kein targets/."
 realpath -s --relative-to=/ / >/dev/null 2>&1 || falsch "GNU realpath fehlt."
-BASIS="$(realpath -s "$BASIS")"; ZUSATZ="$(realpath -s "$ZUSATZ")"
+BASIS="$(realpath -s "$BASIS")"
+for i in "${!ZUSAETZE[@]}"; do ZUSAETZE[i]="$(realpath -s "${ZUSAETZE[i]}")"; done
+NZ="${#ZUSAETZE[@]}"
 AUS="$(realpath -sm "$AUS")"
 
 TMP="$(mktemp -d)"
@@ -566,7 +577,7 @@ printf '%s\n' "${OHNE_4FELD[@]}" | sort -u > "$TMP/ohne4"
 [ "$KEIN_ALIAS" = 0 ] || : > "$TMP/alias"
 : > "$TMP/unbedient"; : > "$TMP/bedient"
 FEHLER=0
-SUMME_B=0; SUMME_Z=0; SUMME_DOM=0
+SUMME_B=0; SUMME_DOM=0; SUMME_Z=(); for i in "${!ZUSAETZE[@]}"; do SUMME_Z[i]=0; done
 
 # verlinken <quelle> <zielordner>: relativer Symlink im Zielordner
 verlinken() {
@@ -600,9 +611,10 @@ modell_zu_datei() {
 
 # Domain-Ordner: Vereinigung aus Basis und Zusatz. Flache Ablage (eine
 # Domain, <wurzel>/sysupgrade/...) zaehlt als eine Domain ".".
-if [ -d "$BASIS/sysupgrade" ] || [ -d "$ZUSATZ/sysupgrade" ]; then
-	[ -d "$BASIS/sysupgrade" ] && [ -d "$ZUSATZ/sysupgrade" ] \
-		|| falsch "Basis und Zusatz muessen gleich abgelegt sein: beide flach (<wurzel>/sysupgrade) oder beide mit Domain-Ordnern."
+flach=0; for z in "$BASIS" "${ZUSAETZE[@]}"; do [ -d "$z/sysupgrade" ] && flach=$((flach + 1)); done
+if [ "$flach" -gt 0 ]; then
+	[ "$flach" = $((NZ + 1)) ] \
+		|| falsch "Basis und Zusaetze muessen gleich abgelegt sein: alle flach (<wurzel>/sysupgrade) oder alle mit Domain-Ordnern."
 	echo . > "$TMP/domains"
 else
 	# Key-Ordner heissen je nach Bau "<domain>.key" (2025.1) oder
@@ -610,7 +622,7 @@ else
 	# Namen, den die Basis fuer ihn hat, sonst bekaemen die Key-Domains der
 	# Basis keine Zusatz-Zeilen und daneben entstuende ein zweiter Ordner.
 	{ ( cd "$BASIS" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' )
-	  ( cd "$ZUSATZ" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' ) | while IFS= read -r d; do
+	  for z in "${ZUSAETZE[@]}"; do ( cd "$z" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' ); done | while IFS= read -r d; do
 		case "$d" in
 			*-key) [ -d "$BASIS/${d%-key}.key" ] && d="${d%-key}.key" ;;
 			*.key) [ -d "$BASIS/${d%.key}-key" ] && d="${d%.key}-key" ;;
@@ -625,22 +637,21 @@ while IFS= read -r f; do
 done < <(cd "$BASIS" && find . -mindepth 1 -maxdepth 1 ! -type d -printf '%f\n' | sort)
 
 while IFS= read -r dom; do
-	B="$BASIS/$dom"; Z="$ZUSATZ/$dom"; O="$AUS/$dom"
-	if [ ! -d "$Z" ]; then
-		case "$dom" in
-			*.key) [ -d "$ZUSATZ/${dom%.key}-key" ] && Z="$ZUSATZ/${dom%.key}-key" ;;
-			*-key) [ -d "$ZUSATZ/${dom%-key}.key" ] && Z="$ZUSATZ/${dom%-key}.key" ;;
-		esac
-	fi
+	B="$BASIS/$dom"; O="$AUS/$dom"
+	# ZD[i]: Ordner dieser Domain im Zusatz i (Key-Namen wie oben gleichgesetzt)
+	ZD=()
+	for i in "${!ZUSAETZE[@]}"; do
+		Z="${ZUSAETZE[i]}/$dom"
+		if [ ! -d "$Z" ]; then
+			case "$dom" in
+				*.key) [ -d "${ZUSAETZE[i]}/${dom%.key}-key" ] && Z="${ZUSAETZE[i]}/${dom%.key}-key" ;;
+				*-key) [ -d "${ZUSAETZE[i]}/${dom%-key}.key" ] && Z="${ZUSAETZE[i]}/${dom%-key}.key" ;;
+			esac
+		fi
+		ZD[i]="$Z"
+	done
 	SUMME_DOM=$((SUMME_DOM + 1))
 	MBF="$B/sysupgrade/$MB"
-	if [ -n "$MZ" ]; then
-		MZF="$Z/sysupgrade/$MZ"
-	else
-		# einziges *.manifest im Zusatz, sonst <branch>.manifest
-		MZF="$(find "$Z/sysupgrade" -maxdepth 1 -name '*.manifest' 2>/dev/null)"
-		[ "$(printf '%s' "$MZF" | grep -c .)" = 1 ] || MZF="$Z/sysupgrade/$BRANCH.manifest"
-	fi
 
 	# Modelle der Basis (5- und 4-Feld-Zeilen)
 	: > "$TMP/b.modelle"
@@ -650,29 +661,56 @@ while IFS= read -r dom; do
 		echo "$dom: Basis ohne $MB, nur der Zusatz zaehlt." >&2
 	fi
 
-	# Zusatz-Zeilen fuer fehlende Modelle
-	: > "$TMP/z.zeilen"; : > "$TMP/z.modelle.alle"
-	if [ -f "$MZF" ]; then
-		sed '/^---$/,$d' "$MZF" | awk 'NF == 5' > "$TMP/z.alle"
-		awk '{ print $1 }' "$TMP/z.alle" | sort -u > "$TMP/z.modelle.alle"
-		# Zusatz-Modell nur, wenn die Basis es weder unter diesem Namen noch
-		# ueber einen Alias (alt -> neu, neu in der Basis) fuehrt; im zweiten
-		# Fall kommt spaeter die Alias-Zeile auf das Basis-Image.
-		# (nicht NR == FNR: bei leerer Basis-Liste waere das auch fuer z.alle wahr)
-		awk -v bf="$TMP/b.modelle" -v af="$TMP/alias" '
-			BEGIN { while ((getline z < bf) > 0) b[z] = 1
-			        while ((getline z < af) > 0) { split(z, a, " "); neu[a[1]] = a[2] } }
-			!($1 in b) && !(($1 in neu) && (neu[$1] in b))' \
-			"$TMP/z.alle" > "$TMP/z.zeilen"
+	# Zusatz-Zeilen fuer fehlende Modelle, Zusatz fuer Zusatz in der Reihenfolge
+	# der -z: Ein Modell kommt aus dem ersten Zusatz, der es fuehrt und das
+	# weder die Basis noch ein frueherer Zusatz schon hat.
+	cp "$TMP/b.modelle" "$TMP/gedeckt"
+	zinfo=""; z_irgendwas=0
+	for i in "${!ZUSAETZE[@]}"; do
+		Z="${ZD[i]}"
+		if [ -n "$MZ" ]; then
+			MZF="$Z/sysupgrade/$MZ"
+		else
+			# einziges *.manifest im Zusatz, sonst <branch>.manifest
+			MZF="$(find "$Z/sysupgrade" -maxdepth 1 -name '*.manifest' 2>/dev/null)"
+			[ "$(printf '%s' "$MZF" | grep -c .)" = 1 ] || MZF="$Z/sysupgrade/$BRANCH.manifest"
+		fi
+		: > "$TMP/z.zeilen.$i"; : > "$TMP/z.modelle.alle.$i"
+		if [ -f "$MZF" ]; then
+			sed '/^---$/,$d' "$MZF" | awk 'NF == 5' > "$TMP/z.alle"
+			awk '{ print $1 }' "$TMP/z.alle" | sort -u > "$TMP/z.modelle.alle.$i"
+			# Zusatz-Modell nur, wenn es noch nicht gedeckt ist, weder unter
+			# diesem Namen noch ueber einen Alias (alt -> neu, neu gedeckt); im
+			# zweiten Fall kommt spaeter die Alias-Zeile auf das vorhandene Image.
+			# Namen aus OHNE_4FELD bekommen nie eine Alias-Zeile, sie bleiben
+			# also beim Zusatz (sonst haetten sie gar kein Image).
+			# (nicht NR == FNR: bei leerer Liste waere das auch fuer z.alle wahr)
+			awk -v bf="$TMP/gedeckt" -v af="$TMP/alias" -v ohne="$TMP/ohne4" '
+				BEGIN { while ((getline z < bf) > 0) b[z] = 1
+				        while ((getline z < af) > 0) { split(z, a, " "); neu[a[1]] = a[2] }
+				        while ((getline z < ohne) > 0) aus[z] = 1 }
+				!($1 in b) && !(($1 in neu) && (neu[$1] in b) && !($1 in aus))' \
+				"$TMP/z.alle" > "$TMP/z.zeilen.$i"
+		fi
+		awk '{ print $1 }' "$TMP/z.zeilen.$i" | sort -u > "$TMP/z.modelle.$i"
+		cat "$TMP/z.modelle.$i" >> "$TMP/gedeckt"
+		nz="$(wc -l < "$TMP/z.modelle.$i" | tr -d ' ')"
+		SUMME_Z[i]=$((SUMME_Z[i] + nz))
+		[ -s "$TMP/z.zeilen.$i" ] && z_irgendwas=1
+		zinfo="$zinfo, aus Zusatz $((i + 1)) $nz"
+	done
+	nb="$(wc -l < "$TMP/b.modelle" | tr -d ' ')"
+	SUMME_B=$((SUMME_B + nb))
+	if [ "$NZ" = 1 ]; then
+		echo "$dom: Basis $nb Modelle, aus dem Zusatz $nz dazu" >&2
+	else
+		echo "$dom: Basis $nb Modelle$zinfo dazu" >&2
 	fi
-	awk '{ print $1 }' "$TMP/z.zeilen" | sort -u > "$TMP/z.modelle"
-	nb="$(wc -l < "$TMP/b.modelle" | tr -d ' ')"; nz="$(wc -l < "$TMP/z.modelle" | tr -d ' ')"
-	SUMME_B=$((SUMME_B + nb)); SUMME_Z=$((SUMME_Z + nz))
-	echo "$dom: Basis $nb Modelle, aus dem Zusatz $nz dazu" >&2
 
-	# Alle Zeilen mit Herkunft: "B|Z modell version sha256 groesse datei"
+	# Alle Zeilen mit Herkunft: "B|<i> modell version sha256 groesse datei",
+	# <i> = Index des Zusatzes (0 = erstes -z)
 	{ [ -f "$MBF" ] && sed '/^---$/,$d' "$MBF" | awk 'NF == 5 { print "B", $0 }'
-	  awk '{ print "Z", $0 }' "$TMP/z.zeilen"; } > "$TMP/zeilen"
+	  for i in "${!ZUSAETZE[@]}"; do awk -v i="$i" '{ print i, $0 }' "$TMP/z.zeilen.$i"; done; } > "$TMP/zeilen"
 	# alte Namen per Alias-Datei, die weder Basis noch Zusatz fuehren
 	awk -v af="$TMP/alias" -v altf="$TMP/alt" -v ohne="$TMP/ohne4" '
 		BEGIN { while ((getline z < altf) > 0) alt[z] = 1
@@ -707,7 +745,7 @@ while IFS= read -r dom; do
 	# sha256 pruefen und sha512 berechnen (je Datei einmal, "vier" ist eindeutig)
 	: > "$TMP/sha512"
 	while read -r q h256 f; do
-		if [ "$q" = B ]; then d="$B/sysupgrade/$f"; else d="$Z/sysupgrade/$f"; fi
+		if [ "$q" = B ]; then d="$B/sysupgrade/$f"; else d="${ZD[q]}/sysupgrade/$f"; fi
 		if [ ! -f "$d" ]; then
 			echo "  fehlt: $d" >&2; FEHLER=1; continue
 		fi
@@ -750,7 +788,7 @@ while IFS= read -r dom; do
 
 	# Unterordner: Vereinigung
 	{ [ -d "$B" ] && ( cd "$B" && find . -mindepth 1 -maxdepth 1 -printf '%f\n' )
-	  [ -d "$Z" ] && ( cd "$Z" && find . -mindepth 1 -maxdepth 1 -printf '%f\n' ); } | sort -u > "$TMP/teile"
+	  for Z in "${ZD[@]}"; do [ -d "$Z" ] && ( cd "$Z" && find . -mindepth 1 -maxdepth 1 -printf '%f\n' ); done; } | sort -u > "$TMP/teile"
 	while IFS= read -r t; do
 		case "$t" in
 			sysupgrade|factory|other)
@@ -760,31 +798,39 @@ while IFS= read -r dom; do
 					done < <(cd "$B/$t" && find . -mindepth 1 -maxdepth 1 ! -type d -printf '%f\n' \
 						| grep -v -e '\.manifest$' -e '\.manifest\.' -e '~$' | sort)
 				fi
-				[ -d "$Z/$t" ] || continue
-				if [ "$t" = sysupgrade ]; then
-					awk '{ print $5 }' "$TMP/z.zeilen" | sort -u | while IFS= read -r f; do
-						[ -e "$O/$t/$f" ] && { echo "  $t/$f gibt es schon aus der Basis" >&2; continue; }
-						verlinken "$Z/$t/$f" "$O/$t"
-					done
-				else
-					v="$(awk 'NR == 1 { print $2 }' "$TMP/z.zeilen")"
-					[ -n "$v" ] || continue
-					while IFS= read -r f; do
-						m="$(modell_zu_datei "$f" "$v" "$TMP/z.modelle.alle")"
-						[ -n "$m" ] && grep -qxF "$m" "$TMP/z.modelle" || continue
-						[ -e "$O/$t/$f" ] && { echo "  $t/$f gibt es schon aus der Basis" >&2; continue; }
-						verlinken "$Z/$t/$f" "$O/$t"
-					done < <(cd "$Z/$t" && find . -mindepth 1 -maxdepth 1 ! -type d -printf '%f\n' | sort)
-				fi
+				for i in "${!ZUSAETZE[@]}"; do
+					Z="${ZD[i]}"
+					[ -d "$Z/$t" ] || continue
+					if [ "$t" = sysupgrade ]; then
+						awk '{ print $5 }' "$TMP/z.zeilen.$i" | sort -u | while IFS= read -r f; do
+							[ -e "$O/$t/$f" ] && { echo "  $t/$f gibt es schon" >&2; continue; }
+							verlinken "$Z/$t/$f" "$O/$t"
+						done
+					else
+						v="$(awk 'NR == 1 { print $2 }' "$TMP/z.zeilen.$i")"
+						[ -n "$v" ] || continue
+						while IFS= read -r f; do
+							m="$(modell_zu_datei "$f" "$v" "$TMP/z.modelle.alle.$i")"
+							[ -n "$m" ] && grep -qxF "$m" "$TMP/z.modelle.$i" || continue
+							[ -e "$O/$t/$f" ] && { echo "  $t/$f gibt es schon" >&2; continue; }
+							verlinken "$Z/$t/$f" "$O/$t"
+						done < <(cd "$Z/$t" && find . -mindepth 1 -maxdepth 1 ! -type d -printf '%f\n' | sort)
+					fi
+				done
 				;;
 			*)
-				if [ -e "$B/$t" ]; then verlinken "$B/$t" "$O"; else verlinken "$Z/$t" "$O"; fi
+				if [ -e "$B/$t" ]; then verlinken "$B/$t" "$O"
+				else
+					for Z in "${ZD[@]}"; do
+						[ -e "$Z/$t" ] && { verlinken "$Z/$t" "$O"; break; }
+					done
+				fi
 				;;
 		esac
 	done < "$TMP/teile"
 
 	# neues Manifest
-	[ -f "$MBF" ] || [ -s "$TMP/z.zeilen" ] || continue
+	[ -f "$MBF" ] || [ "$z_irgendwas" = 1 ] || continue
 	prio="$( [ -f "$MBF" ] && kopf_wert "$MBF" PRIORITY )"
 	{
 		echo "BRANCH=$BRANCH"
@@ -828,7 +874,12 @@ if [ -s "$TMP/unbedient" ]; then
 	echo "Alte Namen (4-Feld-Zeit) ohne Image in mindestens einer Domain:" >&2
 	sort "$TMP/unbedient" | uniq -c | awk '{ printf "  %s (%d Domains)\n", $2, $1 }' >&2
 fi
-echo "Domains: $SUMME_DOM, Modelle aus der Basis: $SUMME_B, aus dem Zusatz ergaenzt: $SUMME_Z" >&2
+if [ "$NZ" = 1 ]; then
+	echo "Domains: $SUMME_DOM, Modelle aus der Basis: $SUMME_B, aus dem Zusatz ergaenzt: ${SUMME_Z[0]}" >&2
+else
+	zs=""; for i in "${!ZUSAETZE[@]}"; do zs="$zs, aus Zusatz $((i + 1)) (${ZUSAETZE[i]##*/}): ${SUMME_Z[i]}"; done
+	echo "Domains: $SUMME_DOM, Modelle aus der Basis: $SUMME_B$zs" >&2
+fi
 
 if [ -n "$GLUON" ]; then
 	# Geraete aus targets/: Hauptname plus aliases/manifest_aliases, dazu

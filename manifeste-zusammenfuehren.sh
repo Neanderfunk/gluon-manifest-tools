@@ -87,6 +87,28 @@ X86-ALTKNOTEN
   Mit dem naechsten Release wechselt ein MBR-Knoten von selbst aufs EFI-Image.
   Sprungmatrix: docs/x86-altknoten.md
 
+MULTIDOMAIN-BASIS (-D)
+  Eine Multidomain-Firmware hat EIN Image fuer alle Domains, die Ausgabe ist
+  flach (<basis>/{sysupgrade,factory,other,site}), die Knoten suchen ihr
+  Update aber weiter unter <branch>/<domain>/sysupgrade. Mit -D wird die
+  flache Basis zur Basis JEDES Domain-Ordners:
+    -D auto    Domains aus <basis>/site/domains/*.conf (legt Gluons Bau so ab)
+    -D datei   ein Domain-Code je Zeile, "#" als Kommentar
+  Dazu kommt jeder Domain-Ordner, den ein Zusatz hat (alte Pfade, die nicht
+  mehr in der Liste stehen, bekommen so trotzdem das neue Image; das Skript
+  nennt sie). Die Zusaetze bleiben je Domain abgelegt.
+  -k dir     flache Ausgabe der Key-Variante (Images mit SSH-Schluesseln). Damit
+             gibt es zu jeder Domain auch "<domain>.key" mit dieser Basis;
+             "<domain>-key" eines Zusatzes zaehlt als "<domain>.key". Ohne -k
+             entstehen keine Key-Ordner, und ein Zusatz mit Key-Ordnern ist ein
+             Fehler.
+  Beispiel (Multidomain-stable, ERX-Zwischenbau, Sackgasse):
+    manifeste-zusammenfuehren.sh -n -D auto \
+        -b images-<lauf>/multidomain/ffnef-multi \
+        -k images-<lauf>/multidomain/ffnef-multi-key \
+        -z stable.2023.2.6-26101600sta -z sackgasse.2021.1.2-24112319 \
+        -o stable.<version>-erx-sackgasse
+
 GRENZEN
   - Ob die Basis-Firmware den Sprung von einem alten Stand aushaelt (Migration
     der Konfiguration), prueft das Skript nicht; das Manifest macht ihn nur
@@ -100,8 +122,9 @@ GRENZEN
 
 AUFRUF
   manifeste-zusammenfuehren.sh [optionen] -b <basis> -z <zusatz> [-z <zusatz> ...] -o <ausgabe>
+  manifeste-zusammenfuehren.sh [optionen] -D auto -b <multi> [-k <multi-key>] [-z <zusatz> ...] -o <ausgabe>
 
-  -b dir     Basis, z. B. /var/www/firmware/stable-v2023.2
+  -b dir     Basis, z. B. /var/www/firmware/stable-v2023.2; mit -D flach
   -z dir     Zusatz, z. B. /var/www/firmware/eol-v2021.1. Mehrfach erlaubt,
              siehe MEHRERE ZUSAETZE.
   -o dir     Ausgabe, darf noch nicht existieren
@@ -115,6 +138,8 @@ AUFRUF
              Geraete aus dessen targets/, die im Ergebnis kein Image haben,
              je Target. Zeigt, welche Targets fuer den Zusatz noch gebaut
              werden muessten. Liest nur targets/ (Lua-Format ab v2019.1).
+  -D liste   flache Multidomain-Basis fuer alle Domains, siehe MULTIDOMAIN-BASIS
+  -k dir     flache Key-Variante dazu (nur mit -D)
   -x modus   x86-Altknoten: alt (Vorgabe), alle oder aus, siehe X86-ALTKNOTEN
   -a datei   zusaetzliche Zuordnungen alter -> neuer Modellnamen, "alt neu"
              je Zeile, "#" als Kommentar. Die bekannten stehen schon im
@@ -534,8 +559,8 @@ for arg in "$@"; do
 done
 
 BASIS=""; ZUSAETZE=(); AUS=""; BRANCH="stable"; MB=""; MZ=""; GLUON=""; PROBE=0
-ALIASE=""; X86="alt"; KEIN_ALIAS=0
-while getopts "b:z:o:B:m:M:a:Ag:x:n" opt; do
+ALIASE=""; X86="alt"; KEIN_ALIAS=0; DLISTE=""; KBASIS=""
+while getopts "b:z:o:B:m:M:a:Ag:x:D:k:n" opt; do
 	case "$opt" in
 		b) BASIS="$OPTARG" ;;
 		z) ZUSAETZE+=("$OPTARG") ;;
@@ -547,14 +572,30 @@ while getopts "b:z:o:B:m:M:a:Ag:x:n" opt; do
 		A) KEIN_ALIAS=1 ;;
 		g) GLUON="$OPTARG" ;;
 		x) X86="$OPTARG" ;;
+		D) DLISTE="$OPTARG" ;;
+		k) KBASIS="$OPTARG" ;;
 		n) PROBE=1 ;;
 		*) falsch "Unbekannte Option." ;;
 	esac
 done
 shift $((OPTIND - 1))
 [ $# -eq 0 ] || falsch "Unerwartete Argumente: $*"
-[ -n "$BASIS" ] && [ "${#ZUSAETZE[@]}" -gt 0 ] && [ -n "$AUS" ] || falsch "-b, -z und -o sind Pflicht."
+if [ -n "$DLISTE" ]; then
+	[ -n "$BASIS" ] && [ -n "$AUS" ] || falsch "-b und -o sind Pflicht."
+else
+	[ -n "$BASIS" ] && [ "${#ZUSAETZE[@]}" -gt 0 ] && [ -n "$AUS" ] || falsch "-b, -z und -o sind Pflicht."
+	[ -z "$KBASIS" ] || falsch "-k gibt es nur mit -D."
+fi
 [ -d "$BASIS" ] || falsch "$BASIS ist kein Verzeichnis."
+if [ -n "$DLISTE" ]; then
+	[ -d "$BASIS/sysupgrade" ] || falsch "-D braucht eine flache Basis: $BASIS/sysupgrade fehlt."
+	[ -z "$KBASIS" ] || [ -d "$KBASIS/sysupgrade" ] || falsch "-k braucht eine flache Ausgabe: $KBASIS/sysupgrade fehlt."
+	if [ "$DLISTE" = auto ]; then
+		[ -d "$BASIS/site/domains" ] || falsch "-D auto: $BASIS/site/domains fehlt, Domain-Liste mit -D <datei> angeben."
+	else
+		[ -r "$DLISTE" ] || falsch "$DLISTE nicht lesbar."
+	fi
+fi
 for z in "${ZUSAETZE[@]}"; do [ -d "$z" ] || falsch "$z ist kein Verzeichnis."; done
 [ -e "$AUS" ] && falsch "$AUS existiert schon; bitte einen neuen Namen nehmen."
 [ -n "$MB" ] || MB="$BRANCH.manifest"
@@ -563,6 +604,7 @@ case "$X86" in alt|alle|aus) ;; *) falsch "-x kennt nur alt, alle oder aus." ;; 
 [ -z "$GLUON" ] || [ -d "$GLUON/targets" ] || falsch "$GLUON hat kein targets/."
 realpath -s --relative-to=/ / >/dev/null 2>&1 || falsch "GNU realpath fehlt."
 BASIS="$(realpath -s "$BASIS")"
+[ -z "$KBASIS" ] || KBASIS="$(realpath -s "$KBASIS")"
 for i in "${!ZUSAETZE[@]}"; do ZUSAETZE[i]="$(realpath -s "${ZUSAETZE[i]}")"; done
 NZ="${#ZUSAETZE[@]}"
 AUS="$(realpath -sm "$AUS")"
@@ -612,7 +654,29 @@ modell_zu_datei() {
 # Domain-Ordner: Vereinigung aus Basis und Zusatz. Flache Ablage (eine
 # Domain, <wurzel>/sysupgrade/...) zaehlt als eine Domain ".".
 flach=0; for z in "$BASIS" "${ZUSAETZE[@]}"; do [ -d "$z/sysupgrade" ] && flach=$((flach + 1)); done
-if [ "$flach" -gt 0 ]; then
+if [ -n "$DLISTE" ]; then
+	# Multidomain: jede Domain aus der Liste (mit -k auch "<domain>.key"),
+	# dazu jeder Domain-Ordner eines Zusatzes, Key-Namen auf ".key" gebracht
+	for z in "${ZUSAETZE[@]}"; do
+		[ -d "$z/sysupgrade" ] && falsch "Mit -D muessen die Zusaetze Domain-Ordner haben, $z ist flach."
+	done
+	if [ "$DLISTE" = auto ]; then
+		( cd "$BASIS/site/domains" && find . -maxdepth 1 -name '*.conf' -printf '%f\n' | sed 's/\.conf$//' )
+	else
+		sed 's/#.*//' "$DLISTE" | awk 'NF { print $1 }'
+	fi | sort -u > "$TMP/liste"
+	[ -s "$TMP/liste" ] || falsch "Die Domain-Liste ist leer."
+	grep -v -E '^[0-9A-Za-z_]+$' "$TMP/liste" >&2 && falsch "Ungueltige Domain-Codes in der Liste (siehe oben)."
+	{ cat "$TMP/liste"; [ -z "$KBASIS" ] || sed 's/$/.key/' "$TMP/liste"
+	  for z in "${ZUSAETZE[@]}"; do ( cd "$z" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' ); done \
+		| sed 's/-key$/.key/'; } | sort -u > "$TMP/domains"
+	if [ -z "$KBASIS" ] && grep -q '\.key$' "$TMP/domains"; then
+		falsch "Ein Zusatz hat Key-Ordner ($(grep -c '\.key$' "$TMP/domains")), dafuer fehlt -k mit der Key-Variante."
+	fi
+	{ cat "$TMP/liste"; sed 's/$/.key/' "$TMP/liste"; } | sort -u | comm -13 - "$TMP/domains" > "$TMP/extra"
+	[ -s "$TMP/extra" ] && echo "Nicht in der Domain-Liste, nur aus den Zusaetzen (bekommen trotzdem die Basis): $(tr '\n' ' ' < "$TMP/extra")" >&2
+	echo "Multidomain-Basis fuer $(wc -l < "$TMP/domains" | tr -d ' ') Domain-Ordner ($(wc -l < "$TMP/liste" | tr -d ' ') Domains$( [ -n "$KBASIS" ] && echo ', mit .key'))" >&2
+elif [ "$flach" -gt 0 ]; then
 	[ "$flach" = $((NZ + 1)) ] \
 		|| falsch "Basis und Zusaetze muessen gleich abgelegt sein: alle flach (<wurzel>/sysupgrade) oder alle mit Domain-Ordnern."
 	echo . > "$TMP/domains"
@@ -631,13 +695,19 @@ else
 	  done; } | sort -u > "$TMP/domains"
 fi
 
-# Dateien direkt in der Basis-Wurzel (README u. a.) mitnehmen
-while IFS= read -r f; do
-	verlinken "$BASIS/$f" "$AUS"
-done < <(cd "$BASIS" && find . -mindepth 1 -maxdepth 1 ! -type d -printf '%f\n' | sort)
+# Dateien direkt in der Basis-Wurzel (README u. a.) mitnehmen; bei -D ist die
+# Wurzel der Basis schon ein Domain-Ordner, ihre Dateien kommen je Domain mit
+if [ -z "$DLISTE" ]; then
+	while IFS= read -r f; do
+		verlinken "$BASIS/$f" "$AUS"
+	done < <(cd "$BASIS" && find . -mindepth 1 -maxdepth 1 ! -type d -printf '%f\n' | sort)
+fi
 
 while IFS= read -r dom; do
 	B="$BASIS/$dom"; O="$AUS/$dom"
+	if [ -n "$DLISTE" ]; then
+		case "$dom" in *.key) B="$KBASIS" ;; *) B="$BASIS" ;; esac
+	fi
 	# ZD[i]: Ordner dieser Domain im Zusatz i (Key-Namen wie oben gleichgesetzt)
 	ZD=()
 	for i in "${!ZUSAETZE[@]}"; do

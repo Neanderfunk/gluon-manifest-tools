@@ -10,7 +10,7 @@ Manifeste. Hilfe jeweils mit `--help`.
 
 | Skript | Zweck |
 | --- | --- |
-| `manifeste-zusammenfuehren.sh` | Neues Firmware-Verzeichnis (z. B. stable) aus einer Basis (aktuelle Gluon-Version) und einem oder mehreren Zusätzen (`-z` mehrfach, in fester Rangfolge; z. B. ein Zwischenimage und die letzte Version für Geräte, die die Basis nicht mehr baut), nur per Symlinks. Neues Manifest mit allen Zeilenformaten, die alte Knoten lesen, alten Modellnamen (eingebaute Aliasliste) und x86-Umlenkung auf ein MBR-Image (`-x`). `-g` prüft die Abdeckung gegen einen Gluon-Quellbaum. |
+| `manifeste-zusammenfuehren.sh` | Neues Firmware-Verzeichnis (z. B. stable) aus einer Basis (aktuelle Gluon-Version) und einem oder mehreren Zusätzen (`-z` mehrfach, in fester Rangfolge; z. B. ein Zwischenimage und die letzte Version für Geräte, die die Basis nicht mehr baut), nur per Symlinks. Neues Manifest mit allen Zeilenformaten, die alte Knoten lesen, alten Modellnamen (eingebaute Aliasliste) und x86-Umlenkung auf ein MBR-Image (`-x`). `-g` prüft die Abdeckung gegen einen Gluon-Quellbaum. Mit `-D` (und `-k` für die Key-Variante) wird die flache Ausgabe einer Multidomain-Firmware zur Basis jedes Domain-Ordners. |
 | `manifest-altformat.sh` | Ein vorhandenes Manifest um die alten Zeilenformate und alten Modellnamen ergänzen. |
 | `manifest-pruefen.sh` | Manifeste gegen die Images daneben prüfen (Datei da, sha256, Größe), vor und nach dem Unterschreiben. |
 
@@ -85,6 +85,29 @@ manifest-pruefen.sh /var/www/firmware/stable-neu
 
 Erst mit `-n` (Probelauf), dann unterschreiben, dann den Symlink des Zweigs
 umstellen.
+
+## Multidomain-Firmware
+
+Eine Multidomain-Firmware hat ein Image für alle Domains und legt es flach
+ab (`<lauf>/{sysupgrade,factory,other,site}`), die Knoten suchen ihr Update
+aber weiter unter `<branch>/<domain>/sysupgrade`. Mit `-D auto` (Domains aus
+`site/domains/*.conf` der Basis) oder `-D <datei>` entsteht daraus der
+übliche Baum mit einem Ordner je Domain, mit `-k` auch `<domain>.key` aus der
+Key-Variante. Zusätze bleiben je Domain abgelegt; Domain-Ordner, die nur ein
+Zusatz hat (alte Pfade), bekommen ebenfalls die Basis. Ohne `-z` ist das nur
+die Verteilung auf die Domain-Pfade.
+
+```sh
+manifeste-zusammenfuehren.sh -n -D auto \
+    -b /var/www/firmware/images-<lauf>/multidomain/ffnef-multi \
+    -k /var/www/firmware/images-<lauf>/multidomain/ffnef-multi-key \
+    -z /var/www/firmware/stable-zwischenbau -z /var/www/firmware/sackgasse-v2021.1 \
+    -o /var/www/firmware/stable-neu
+```
+
+Die Manifeste der alten Domain-Pfade lesen auch Knoten, die noch die
+Schlüssel ihrer alten Firmware haben: so unterschreiben, dass deren
+Schwelle erreicht wird.
 
 ## Herkunft
 
